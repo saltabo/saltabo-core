@@ -1,17 +1,22 @@
-//
-//  SwitchTabApp.swift
-//  SwitchTab
-//
-//  Created by Lam Tung on 17/3/26.
-//
-
-import SwiftUI
+import AppKit
 
 @main
-struct SwitchTabApp: App {
-    var body: some Scene {
-        WindowGroup {
-            ContentView()
-        }
+final class SwitchTabApp: NSObject, NSApplicationDelegate {
+    private var appSwitcherManager: AppSwitcherManager { .shared }
+    private var dockPreviewManager: DockPreviewManager { .shared }
+
+    static func main() {
+        let app = NSApplication.shared
+        let delegate = SwitchTabApp()
+        app.delegate = delegate
+        app.setActivationPolicy(.accessory)
+        app.run()
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        AccessibilityService.shared.presentPermissionAlertIfNeeded()
+        MenuBarManager.shared.setup()
+        appSwitcherManager.start()
+        dockPreviewManager.start()
     }
 }
