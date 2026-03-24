@@ -1,62 +1,90 @@
 import AppKit
 
+private final class SwitcherPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+}
+
 final class FloatingSwitcherWindow {
+    private enum Metrics {
+        static let itemSize = NSSize(width: 152, height: 108)
+        static let itemSpacing: CGFloat = 14
+        static let contentInset = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
+        static let panelInset: CGFloat = 10
+        static let panelHeight: CGFloat = 168
+    }
+
     private let panel: NSPanel
-    private let visualEffectView = NSVisualEffectView()
-    private let stackView = NSStackView()
+    private let rootView = TransparentPanelContentView()
+    private let backgroundCardView = NSView()
+    private let blurView = NSVisualEffectView()
+    private let tintView = NSView()
 
     init() {
-        panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 760, height: 180),
+        panel = SwitcherPanel(
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: Metrics.panelHeight),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
 
-        panel.level = .statusBar
+        panel.level = .popUpMenu
         panel.isFloatingPanel = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         panel.backgroundColor = .clear
         panel.isOpaque = false
-        panel.hasShadow = true
+        panel.hasShadow = false
+        panel.hidesOnDeactivate = false
 
-        visualEffectView.material = .hudWindow
-        visualEffectView.blendingMode = .withinWindow
-        visualEffectView.state = .active
-        visualEffectView.wantsLayer = true
-        visualEffectView.layer?.cornerRadius = 24
-        visualEffectView.translatesAutoresizingMaskIntoConstraints = false
+        rootView.wantsLayer = true
+        rootView.layer?.backgroundColor = NSColor.clear.cgColor
 
-        stackView.orientation = .horizontal
-        stackView.spacing = 14
-        stackView.edgeInsets = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
-        stackView.translatesAutoresizingMaskIntoConstraints = false
+        backgroundCardView.wantsLayer = true
+        backgroundCardView.layer?.cornerRadius = 24
+        backgroundCardView.layer?.masksToBounds = true
+        backgroundCardView.layer?.backgroundColor = NSColor.clear.cgColor
+        backgroundCardView.layer?.borderWidth = 1
+        backgroundCardView.layer?.borderColor = NSColor.white.withAlphaComponent(0.16).cgColor
+        backgroundCardView.layer?.shadowColor = NSColor.black.withAlphaComponent(0.28).cgColor
+        backgroundCardView.layer?.shadowOpacity = 1
+        backgroundCardView.layer?.shadowRadius = 24
+        backgroundCardView.layer?.shadowOffset = NSSize(width: 0, height: -8)
 
-        visualEffectView.addSubview(stackView)
-        panel.contentView = visualEffectView
+        blurView.blendingMode = .behindWindow
+        blurView.state = .active
+        blurView.material = .sidebar
+        blurView.wantsLayer = true
+        blurView.layer?.cornerRadius = 24
+        blurView.layer?.masksToBounds = true
 
-        NSLayoutConstraint.activate([
-            stackView.topAnchor.constraint(equalTo: visualEffectView.topAnchor),
-            stackView.leadingAnchor.constraint(equalTo: visualEffectView.leadingAnchor),
-            stackView.trailingAnchor.constraint(equalTo: visualEffectView.trailingAnchor),
-            stackView.bottomAnchor.constraint(equalTo: visualEffectView.bottomAnchor),
-        ])
+        tintView.wantsLayer = true
+        tintView.layer?.backgroundColor = NSColor(calibratedRed: 0.16, green: 0.18, blue: 0.22, alpha: 0.34).cgColor
+
+        rootView.addSubview(backgroundCardView)
+        backgroundCardView.addSubview(blurView)
+        backgroundCardView.addSubview(tintView)
+        panel.contentView = rootView
     }
 
     func show(items: [SwitcherApp], selectedIndex: Int) {
+        guard !items.isEmpty else { return }
+
+        let panelSize = panelSize(for: items.count)
+        layoutChrome(panelSize: panelSize)
         rebuild(items: items, selectedIndex: selectedIndex)
 
         guard let screen = screenForPresentation() else { return }
-        let width = min(max(CGFloat(items.count) * 166 + 40, 420), screen.visibleFrame.width - 120)
         let frame = NSRect(
-            x: screen.visibleFrame.midX - width / 2,
-            y: screen.visibleFrame.midY - 90,
-            width: width,
-            height: 148
+            x: screen.visibleFrame.midX - panelSize.width / 2,
+            y: screen.visibleFrame.midY - panelSize.height / 2,
+            width: panelSize.width,
+            height: panelSize.height
         )
-        panel.setFrame(frame, display: true)
+
+        panel.setFrame(frame, display: false)
         panel.alphaValue = 0
-        panel.orderFrontRegardless()
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
 
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.12
@@ -65,7 +93,11 @@ final class FloatingSwitcherWindow {
     }
 
     func update(items: [SwitcherApp], selectedIndex: Int) {
+        guard !items.isEmpty else { return }
+        let panelSize = panelSize(for: items.count)
+        layoutChrome(panelSize: panelSize)
         rebuild(items: items, selectedIndex: selectedIndex)
+        panel.displayIfNeeded()
     }
 
     func hide() {
@@ -78,16 +110,37 @@ final class FloatingSwitcherWindow {
     }
 
     private func rebuild(items: [SwitcherApp], selectedIndex: Int) {
-        stackView.arrangedSubviews.forEach {
-            stackView.removeArrangedSubview($0)
-            $0.removeFromSuperview()
-        }
+        backgroundCardView.subviews
+            .filter { $0 !== blurView && $0 !== tintView }
+            .forEach { $0.removeFromSuperview() }
+
+        let originY = Metrics.contentInset.bottom
+        var originX = Metrics.contentInset.left
 
         for (index, item) in items.enumerated() {
-            let view = AppSwitcherItemView()
+            let view = AppSwitcherItemView(frame: NSRect(origin: .zero, size: Metrics.itemSize))
             view.configure(with: item, selected: index == selectedIndex)
-            stackView.addArrangedSubview(view)
+            view.frame = NSRect(origin: NSPoint(x: originX, y: originY), size: Metrics.itemSize)
+            backgroundCardView.addSubview(view)
+            originX += Metrics.itemSize.width + Metrics.itemSpacing
         }
+    }
+
+    private func layoutChrome(panelSize: NSSize) {
+        rootView.frame = NSRect(origin: .zero, size: panelSize)
+        backgroundCardView.frame = rootView.bounds.insetBy(dx: Metrics.panelInset, dy: Metrics.panelInset)
+        blurView.frame = backgroundCardView.bounds
+        tintView.frame = backgroundCardView.bounds
+    }
+
+    private func panelSize(for itemCount: Int) -> NSSize {
+        let contentWidth = Metrics.contentInset.left
+            + Metrics.contentInset.right
+            + CGFloat(itemCount) * Metrics.itemSize.width
+            + CGFloat(max(itemCount - 1, 0)) * Metrics.itemSpacing
+        let minimumWidth = Metrics.itemSize.width + Metrics.contentInset.left + Metrics.contentInset.right + Metrics.panelInset * 2
+        let width = max(minimumWidth, contentWidth + Metrics.panelInset * 2)
+        return NSSize(width: width, height: Metrics.panelHeight)
     }
 
     private func screenForPresentation() -> NSScreen? {

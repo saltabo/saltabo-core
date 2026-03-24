@@ -6,6 +6,12 @@ final class SpaceAwareWindowService {
 
     private init() {}
 
+    func currentSpaceApplications(on screen: NSScreen?) -> [SwitcherApp] {
+        let visibleWindows = fetchWindows(options: [.optionOnScreenOnly, .excludeDesktopElements])
+        let filteredWindows = filter(windows: visibleWindows, to: screen)
+        return groupApplications(from: filteredWindows)
+    }
+
     func currentSpaceApplications() -> [SwitcherApp] {
         let visibleWindows = fetchWindows(options: [.optionOnScreenOnly, .excludeDesktopElements])
         return groupApplications(from: visibleWindows)
@@ -60,6 +66,11 @@ final class SpaceAwareWindowService {
                 windows: appWindows.sorted { $0.orderIndex < $1.orderIndex }
             )
         }
+    }
+
+    private func filter(windows: [WindowDescriptor], to screen: NSScreen?) -> [WindowDescriptor] {
+        guard let screen else { return windows }
+        return windows.filter { screen.frame.contains(CGPoint(x: $0.bounds.midX, y: $0.bounds.midY)) }
     }
 
     private func fetchWindows(options: CGWindowListOption) -> [WindowDescriptor] {

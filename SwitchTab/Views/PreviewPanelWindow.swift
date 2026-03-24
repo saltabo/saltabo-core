@@ -2,6 +2,7 @@ import AppKit
 
 final class PreviewPanelWindow {
     private let panel: NSPanel
+    private let rootView = TransparentPanelContentView()
     private let visualEffectView = NSVisualEffectView()
     private let stackView = NSStackView()
 
@@ -17,13 +18,19 @@ final class PreviewPanelWindow {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         panel.backgroundColor = .clear
         panel.isOpaque = false
-        panel.hasShadow = true
+        panel.alphaValue = 1
+        panel.hasShadow = false
+
+        rootView.wantsLayer = true
+        rootView.layer?.backgroundColor = NSColor.clear.cgColor
+        rootView.frame = panel.contentRect(forFrameRect: panel.frame)
 
         visualEffectView.material = .hudWindow
         visualEffectView.blendingMode = .withinWindow
         visualEffectView.state = .active
         visualEffectView.wantsLayer = true
         visualEffectView.layer?.cornerRadius = 24
+        visualEffectView.layer?.masksToBounds = true
         visualEffectView.translatesAutoresizingMaskIntoConstraints = false
 
         stackView.orientation = .horizontal
@@ -31,10 +38,16 @@ final class PreviewPanelWindow {
         stackView.edgeInsets = NSEdgeInsets(top: 18, left: 18, bottom: 18, right: 18)
         stackView.translatesAutoresizingMaskIntoConstraints = false
 
+        rootView.addSubview(visualEffectView)
         visualEffectView.addSubview(stackView)
-        panel.contentView = visualEffectView
+        panel.contentView = rootView
 
         NSLayoutConstraint.activate([
+            visualEffectView.topAnchor.constraint(equalTo: rootView.topAnchor, constant: 8),
+            visualEffectView.leadingAnchor.constraint(equalTo: rootView.leadingAnchor, constant: 8),
+            visualEffectView.trailingAnchor.constraint(equalTo: rootView.trailingAnchor, constant: -8),
+            visualEffectView.bottomAnchor.constraint(equalTo: rootView.bottomAnchor, constant: -8),
+
             stackView.topAnchor.constraint(equalTo: visualEffectView.topAnchor),
             stackView.leadingAnchor.constraint(equalTo: visualEffectView.leadingAnchor),
             stackView.trailingAnchor.constraint(equalTo: visualEffectView.trailingAnchor),
@@ -50,6 +63,7 @@ final class PreviewPanelWindow {
     ) {
         rebuild(windows: windows, activate: activate)
         positionPanel(anchorPoint: anchorPoint, itemCount: windows.count)
+        rootView.frame = panel.contentRect(forFrameRect: panel.frame)
         panel.alphaValue = 0
         panel.orderFrontRegardless()
 
@@ -101,7 +115,7 @@ final class PreviewPanelWindow {
         }
 
         let width = min(max(CGFloat(itemCount) * 274 + 36, 320), screen.frame.width - 60)
-        let height: CGFloat = 230
+        let height: CGFloat = 246
         var origin = CGPoint(x: anchorPoint.x - width / 2, y: anchorPoint.y + 18)
 
         origin.x = max(screen.frame.minX + 20, min(origin.x, screen.frame.maxX - width - 20))

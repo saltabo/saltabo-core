@@ -10,6 +10,7 @@ final class AppSwitcherManager {
     private var eventTap: CFMachPort?
     private var items: [SwitcherApp] = []
     private var selectedIndex = 0
+    private var cycleOrder: [pid_t] = []
 
     private init() {}
 
@@ -88,10 +89,10 @@ final class AppSwitcherManager {
 
     private func advanceSelection(reverse: Bool, explicitOpen: Bool) {
         if items.isEmpty || explicitOpen {
-            items = windowService.currentSpaceApplications()
+            items = stabilizedCycleItems(from: windowService.currentSpaceApplications(on: activeScreen()))
             guard !items.isEmpty else { return }
             ThumbnailCache.shared.warm(items.flatMap(\.windows), targetSize: NSSize(width: 236, height: 132))
-            selectedIndex = items.count > 1 ? 1 : 0
+            selectedIndex = nextSelectionIndex(in: items, reverse: reverse)
             floatingWindow.show(items: items, selectedIndex: selectedIndex)
             return
         }
@@ -116,5 +117,32 @@ final class AppSwitcherManager {
         items = []
         selectedIndex = 0
         floatingWindow.hide()
+    }
+
+    private func stabilizedCycleItems(from fetchedItems: [SwitcherApp]) -> [SwitcherApp] {
+        let currentPIDs = fetchedItems.map(\.pid)
+        let retainedOrder = cycleOrder.filter { currentPIDs.contains($0) }
+        let appendedOrder = retainedOrder + currentPIDs.filter { !retainedOrder.contains($0) }
+        cycleOrder = appendedOrder
+
+        let positions = Dictionary(uniqueKeysWithValues: appendedOrder.enumerated().map { ($0.element, $0.offset) })
+        return fetchedItems.sorted {
+            (positions[$0.pid] ?? .max) < (positions[$1.pid] ?? .max)
+        }
+    }
+
+    private func nextSelectionIndex(in items: [SwitcherApp], reverse: Bool) -> Int {
+        guard !items.isEmpty else { return 0 }
+        guard let frontmostPID = NSWorkspace.shared.frontmostApplication?.processIdentifier,
+              let currentIndex = items.firstIndex(where: { $0.pid == frontmostPID }) else {
+            return reverse ? max(items.count - 1, 0) : min(1, max(items.count - 1, 0))
+        }
+
+        let delta = reverse ? -1 : 1
+        return (currentIndex + delta + items.count) % items.count
+    }
+
+    private func activeScreen() -> NSScreen? {
+        NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
     }
 }
