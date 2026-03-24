@@ -8,14 +8,27 @@ final class AppSwitcherManager {
     private let floatingWindow = FloatingSwitcherWindow()
 
     private var eventTap: CFMachPort?
+    private var eventTapSource: CFRunLoopSource?
     private var items: [SwitcherApp] = []
     private var selectedIndex = 0
     private var cycleOrder: [pid_t] = []
 
-    private init() {}
+    private init() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleShortcutChange),
+            name: .switcherShortcutDidChange,
+            object: nil
+        )
+    }
 
     func start() {
+        teardownEventTap()
         installEventTap()
+    }
+
+    @objc private func handleShortcutChange() {
+        start()
     }
 
     func showSwitcherForCurrentSpace() {
@@ -25,7 +38,6 @@ final class AppSwitcherManager {
     private func installEventTap() {
         let permissions = permissionService.requestRequiredPermissions()
         guard permissions.allGranted else {
-            permissionService.presentPermissionAlertIfNeeded()
             return
         }
 
@@ -43,11 +55,11 @@ final class AppSwitcherManager {
         )
 
         guard let eventTap else {
-            permissionService.presentPermissionAlertIfNeeded()
             return
         }
 
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
+        eventTapSource = source
         CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
         CGEvent.tapEnable(tap: eventTap, enable: true)
     }
@@ -60,10 +72,11 @@ final class AppSwitcherManager {
             return Unmanaged.passRetained(event)
         }
 
+        let shortcut = AppSettings.shared.switcherShortcut
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags
 
-        if eventType == .keyDown, keyCode == 48, flags.contains(.maskCommand) {
+        if eventType == .keyDown, shortcut.matches(tabKeyCode: keyCode, flags: flags) {
             let reverse = flags.contains(.maskShift)
             DispatchQueue.main.async {
                 self.advanceSelection(reverse: reverse, explicitOpen: false)
@@ -78,7 +91,9 @@ final class AppSwitcherManager {
             return nil
         }
 
-        if eventType == .flagsChanged, (keyCode == 55 || keyCode == 54), !flags.contains(.maskCommand) {
+        if eventType == .flagsChanged,
+            shortcut.matchesModifierRelease(keyCode: keyCode, flags: flags)
+        {
             DispatchQueue.main.async {
                 self.commitSelection()
             }
@@ -87,8 +102,21 @@ final class AppSwitcherManager {
         return Unmanaged.passRetained(event)
     }
 
+    private func teardownEventTap() {
+        if let eventTapSource {
+            CFRunLoopRemoveSource(CFRunLoopGetCurrent(), eventTapSource, .commonModes)
+            self.eventTapSource = nil
+        }
+
+        if let eventTap {
+            CFMachPortInvalidate(eventTap)
+            self.eventTap = nil
+        }
+    }
+
     private func advanceSelection(reverse: Bool, explicitOpen: Bool) {
         if items.isEmpty || explicitOpen {
+            SettingsWindowController.shared.hideSettingsIfVisible()
             items = stabilizedCycleItems(from: windowService.currentSpaceApplications(on: activeScreen()))
             guard !items.isEmpty else { return }
             ThumbnailCache.shared.warm(items.flatMap(\.windows), targetSize: NSSize(width: 236, height: 132))

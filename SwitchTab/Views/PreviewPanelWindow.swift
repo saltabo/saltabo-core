@@ -85,12 +85,14 @@ final class PreviewPanelWindow {
 
     func hide() {
         guard panel.isVisible else { return }
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.12
-            panel.animator().alphaValue = 0
-        }, completionHandler: {
-            self.panel.orderOut(nil)
-        })
+        NSAnimationContext.runAnimationGroup(
+            { context in
+                context.duration = 0.12
+                panel.animator().alphaValue = 0
+            },
+            completionHandler: {
+                self.panel.orderOut(nil)
+            })
     }
 
     func contains(screenPoint: CGPoint) -> Bool {
@@ -101,28 +103,28 @@ final class PreviewPanelWindow {
         panel.isVisible
     }
 
-    private func rebuild(windows: [WindowDescriptor], activate: @escaping (WindowDescriptor) -> Void) {
+    private func rebuild(
+        windows: [WindowDescriptor], activate: @escaping (WindowDescriptor) -> Void
+    ) {
         backgroundCardView.subviews.filter { $0 !== blurView }.forEach { $0.removeFromSuperview() }
 
-        let contentWidth = CGFloat(windows.count) * Metrics.itemSize.width
+        let contentWidth =
+            CGFloat(windows.count) * Metrics.itemSize.width
             + CGFloat(max(windows.count - 1, 0)) * Metrics.itemSpacing
         let originXStart = (backgroundCardView.bounds.width - contentWidth) / 2
         let originY = (backgroundCardView.bounds.height - Metrics.itemSize.height) / 2
         var originX = originXStart
 
         for window in windows {
-            let previewView = PreviewThumbnailItemView(frame: NSRect(origin: .zero, size: Metrics.itemSize))
+            let previewView = PreviewThumbnailItemView(
+                frame: NSRect(origin: .zero, size: Metrics.itemSize))
             let thumbnailSize = NSSize(width: 236, height: 132)
             let thumbnail = ThumbnailCache.shared.image(for: window, targetSize: thumbnailSize)
-            let subtitle = AccessibilityService.shared.browserTabTitles(for: window.pid)
-                .filter { !$0.isEmpty }
-                .prefix(2)
-                .joined(separator: " • ")
 
-            previewView.frame = NSRect(origin: NSPoint(x: originX, y: originY), size: Metrics.itemSize)
+            previewView.frame = NSRect(
+                origin: NSPoint(x: originX, y: originY), size: Metrics.itemSize)
             previewView.configure(
                 with: window,
-                subtitle: subtitle.isEmpty ? window.appName : subtitle,
                 image: thumbnail
             )
             previewView.onActivate = {
@@ -135,17 +137,20 @@ final class PreviewPanelWindow {
 
     private func layoutChrome(panelSize: NSSize) {
         rootView.frame = NSRect(origin: .zero, size: panelSize)
-        backgroundCardView.frame = rootView.bounds.insetBy(dx: Metrics.panelInset, dy: Metrics.panelInset)
+        backgroundCardView.frame = rootView.bounds.insetBy(
+            dx: Metrics.panelInset, dy: Metrics.panelInset)
         blurView.frame = backgroundCardView.bounds
     }
 
     private func panelSize(for itemCount: Int) -> NSSize {
-        let width = Metrics.contentPadding * 2
+        let width =
+            Metrics.contentPadding * 2
             + CGFloat(itemCount) * Metrics.itemSize.width
             + CGFloat(max(itemCount - 1, 0)) * Metrics.itemSpacing
             + Metrics.panelInset * 2
 
-        let height = Metrics.contentPadding * 2
+        let height =
+            Metrics.contentPadding * 2
             + Metrics.itemSize.height
             + Metrics.panelInset * 2
 
@@ -153,7 +158,10 @@ final class PreviewPanelWindow {
     }
 
     private func positionPanel(anchorPoint: CGPoint, panelSize: NSSize) {
-        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(anchorPoint) }) ?? NSScreen.main else {
+        guard
+            let screen = NSScreen.screens.first(where: { $0.frame.contains(anchorPoint) })
+                ?? NSScreen.main
+        else {
             return
         }
 
@@ -163,15 +171,19 @@ final class PreviewPanelWindow {
         if anchorPoint.x - screen.frame.minX < edgeThreshold {
             origin = CGPoint(x: anchorPoint.x + 28, y: anchorPoint.y - panelSize.height / 2)
         } else if screen.frame.maxX - anchorPoint.x < edgeThreshold {
-            origin = CGPoint(x: anchorPoint.x - panelSize.width - 28, y: anchorPoint.y - panelSize.height / 2)
+            origin = CGPoint(
+                x: anchorPoint.x - panelSize.width - 28, y: anchorPoint.y - panelSize.height / 2)
         } else if anchorPoint.y - screen.frame.minY < edgeThreshold {
             origin = CGPoint(x: anchorPoint.x - panelSize.width / 2, y: anchorPoint.y + 28)
         } else if screen.frame.maxY - anchorPoint.y < edgeThreshold {
-            origin = CGPoint(x: anchorPoint.x - panelSize.width / 2, y: anchorPoint.y - panelSize.height - 28)
+            origin = CGPoint(
+                x: anchorPoint.x - panelSize.width / 2, y: anchorPoint.y - panelSize.height - 28)
         }
 
-        origin.x = max(screen.frame.minX + 20, min(origin.x, screen.frame.maxX - panelSize.width - 20))
-        origin.y = max(screen.frame.minY + 20, min(origin.y, screen.frame.maxY - panelSize.height - 20))
+        origin.x = max(
+            screen.frame.minX + 20, min(origin.x, screen.frame.maxX - panelSize.width - 20))
+        origin.y = max(
+            screen.frame.minY + 20, min(origin.y, screen.frame.maxY - panelSize.height - 20))
 
         panel.setFrame(NSRect(origin: origin, size: panelSize), display: true)
     }

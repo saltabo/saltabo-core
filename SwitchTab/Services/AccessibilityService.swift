@@ -27,42 +27,66 @@ final class AccessibilityService {
 
     private init() {}
 
+    func currentPermissionSnapshot() -> PermissionSnapshot {
+        PermissionSnapshot(
+            accessibilityGranted: AXIsProcessTrusted(),
+            inputMonitoringGranted: CGPreflightListenEventAccess()
+        )
+    }
+
     @discardableResult
     func requestRequiredPermissions() -> PermissionSnapshot {
+        let currentSnapshot = currentPermissionSnapshot()
+
+        if !currentSnapshot.accessibilityGranted {
+            let accessibilityOptions: [String: Bool] = [
+                kAXTrustedCheckOptionPrompt.takeRetainedValue() as String: true
+            ]
+
+            let accessibilityGranted = AXIsProcessTrustedWithOptions(
+                accessibilityOptions as CFDictionary)
+            return PermissionSnapshot(
+                accessibilityGranted: accessibilityGranted,
+                inputMonitoringGranted: currentSnapshot.inputMonitoringGranted
+            )
+        }
+
+        if !currentSnapshot.inputMonitoringGranted {
+            let inputMonitoringGranted =
+                CGPreflightListenEventAccess() || CGRequestListenEventAccess()
+            return PermissionSnapshot(
+                accessibilityGranted: currentSnapshot.accessibilityGranted,
+                inputMonitoringGranted: inputMonitoringGranted
+            )
+        }
+
+        return currentSnapshot
+    }
+
+    @discardableResult
+    func requestAccessibilityPermission() -> Bool {
         let accessibilityOptions: [String: Bool] = [
             kAXTrustedCheckOptionPrompt.takeRetainedValue() as String: true
         ]
 
-        let accessibilityGranted = AXIsProcessTrustedWithOptions(
-            accessibilityOptions as CFDictionary)
-        let inputMonitoringGranted = CGPreflightListenEventAccess() || CGRequestListenEventAccess()
+        return AXIsProcessTrustedWithOptions(accessibilityOptions as CFDictionary)
+    }
 
-        return PermissionSnapshot(
-            accessibilityGranted: accessibilityGranted,
-            inputMonitoringGranted: inputMonitoringGranted
-        )
+    @discardableResult
+    func requestInputMonitoringPermission() -> Bool {
+        CGPreflightListenEventAccess() || CGRequestListenEventAccess()
+    }
+
+    func openAccessibilitySettings() {
+        openSystemSettings("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+    }
+
+    func openInputMonitoringSettings() {
+        openSystemSettings("x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")
     }
 
     func presentPermissionAlertIfNeeded() {
-        let snapshot = requestRequiredPermissions()
-        guard !snapshot.allGranted else { return }
-
-        DispatchQueue.main.async {
-            let alert = NSAlert()
-            alert.alertStyle = .warning
-            alert.messageText = "Additional Permissions Required"
-            alert.informativeText = """
-                SwitchTab needs both Accessibility and Input Monitoring to override Command-Tab and inspect Dock items.
-
-                Enable this app in:
-                - System Settings > Privacy & Security > Accessibility
-                - System Settings > Privacy & Security > Input Monitoring
-
-                Relaunch the app after granting permissions.
-                """
-            alert.addButton(withTitle: "OK")
-            alert.runModal()
-        }
+        _ = requestRequiredPermissions()
     }
 
     func element(at point: CGPoint) -> AXUIElement? {
@@ -407,5 +431,10 @@ final class AccessibilityService {
     private struct DockItemHit {
         let title: String
         let frame: CGRect
+    }
+
+    private func openSystemSettings(_ urlString: String) {
+        guard let url = URL(string: urlString) else { return }
+        NSWorkspace.shared.open(url)
     }
 }

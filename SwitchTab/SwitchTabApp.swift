@@ -17,7 +17,7 @@ final class SwitchTabApp: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        AccessibilityService.shared.presentPermissionAlertIfNeeded()
+        _ = AccessibilityService.shared.requestRequiredPermissions()
         MenuBarManager.shared.setup()
         appSwitcherManager.start()
         dockPreviewManager.start()

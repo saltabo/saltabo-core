@@ -7,10 +7,16 @@ final class MenuBarManager: NSObject {
 
     func setup() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        item.button?.image = NSImage(systemSymbolName: "macwindow.badge.plus", accessibilityDescription: "SwitchTab")
+        if let icon = NSApp.applicationIconImage.copy() as? NSImage {
+            icon.size = NSSize(width: 24, height: 24)
+            icon.isTemplate = false
+            item.button?.image = icon
+        }
+        item.button?.imagePosition = .imageOnly
+        item.button?.toolTip = "SwitchTab"
 
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "Request Permissions", action: #selector(openPermissionsFlow), keyEquivalent: "p"))
+        menu.addItem(NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ","))
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Quit SwitchTab", action: #selector(quit), keyEquivalent: "q"))
         menu.items.forEach { $0.target = self }
@@ -23,8 +29,8 @@ final class MenuBarManager: NSObject {
         AppSwitcherManager.shared.showSwitcherForCurrentSpace()
     }
 
-    @objc private func openPermissionsFlow() {
-        AccessibilityService.shared.presentPermissionAlertIfNeeded()
+    @objc private func openSettings() {
+        SettingsWindowController.shared.showSettings()
     }
 
     @objc private func quit() {

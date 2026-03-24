@@ -6,7 +6,6 @@ final class PreviewThumbnailItemView: NSView {
     private let imageView = NSImageView()
     private let placeholderIconView = NSImageView()
     private let titleField = NSTextField(labelWithString: "")
-    private let subtitleField = NSTextField(labelWithString: "")
     private let hoverLayer = CALayer()
     private var trackingAreaRef: NSTrackingArea?
 
@@ -41,15 +40,9 @@ final class PreviewThumbnailItemView: NSView {
         titleField.textColor = NSColor.labelColor
         titleField.lineBreakMode = .byTruncatingTail
 
-        subtitleField.translatesAutoresizingMaskIntoConstraints = false
-        subtitleField.font = .systemFont(ofSize: 11, weight: .regular)
-        subtitleField.textColor = .secondaryLabelColor
-        subtitleField.lineBreakMode = .byTruncatingTail
-
         addSubview(imageView)
         addSubview(placeholderIconView)
         addSubview(titleField)
-        addSubview(subtitleField)
 
         NSLayoutConstraint.activate([
             widthAnchor.constraint(equalToConstant: 260),
@@ -58,7 +51,7 @@ final class PreviewThumbnailItemView: NSView {
             imageView.topAnchor.constraint(equalTo: topAnchor, constant: 12),
             imageView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
             imageView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
-            imageView.heightAnchor.constraint(equalToConstant: 132),
+            imageView.heightAnchor.constraint(equalToConstant: 142),
 
             placeholderIconView.centerXAnchor.constraint(equalTo: imageView.centerXAnchor),
             placeholderIconView.centerYAnchor.constraint(equalTo: imageView.centerYAnchor),
@@ -69,9 +62,6 @@ final class PreviewThumbnailItemView: NSView {
             titleField.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
             titleField.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
 
-            subtitleField.topAnchor.constraint(equalTo: titleField.bottomAnchor, constant: 4),
-            subtitleField.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
-            subtitleField.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
         ])
     }
 
@@ -130,9 +120,8 @@ final class PreviewThumbnailItemView: NSView {
         onActivate?()
     }
 
-    func configure(with window: WindowDescriptor, subtitle: String, image: NSImage?) {
+    func configure(with window: WindowDescriptor, image: NSImage?) {
         titleField.stringValue = window.displayTitle
-        subtitleField.stringValue = subtitle
         imageView.image = image
         placeholderIconView.image = window.icon
         placeholderIconView.isHidden = image != nil
