@@ -1,92 +1,162 @@
 import AppKit
 
 final class AppSwitcherItemView: NSView {
-    override var intrinsicContentSize: NSSize {
-        NSSize(width: 152, height: 108)
+    private enum Metrics {
+        static let itemSize = NSSize(width: 236, height: 164)
+        static let contentInset: CGFloat = 8
+        static let titleBarHeight: CGFloat = 28
+        static let previewSpacing: CGFloat = 4
+        static let thumbnailTargetSize = NSSize(width: 212, height: 124)
+        static let titleIconSize: CGFloat = 24
     }
 
-    private let iconView = NSImageView()
-    private let iconWellView = NSView()
+    override var intrinsicContentSize: NSSize {
+        Metrics.itemSize
+    }
+
+    private let contentCardView = NSView()
+    private let titleBarView = NSView()
+    private let titleIconView = NSImageView()
     private let titleField = NSTextField(labelWithString: "")
-    private let subtitleField = NSTextField(labelWithString: "")
+    private let previewClipView = NSView()
+    private let previewImageView = NSImageView()
+    private let placeholderView = NSView()
+    private let placeholderIconWellView = NSView()
+    private let placeholderIconView = NSImageView()
 
     override init(frame frameRect: NSRect) {
-        super.init(frame: NSRect(origin: .zero, size: NSSize(width: 152, height: 108)))
+        super.init(frame: NSRect(origin: .zero, size: Metrics.itemSize))
         wantsLayer = true
-        layer?.cornerRadius = 18
-        layer?.borderWidth = 1
-        layer?.backgroundColor = NSColor(calibratedWhite: 0.14, alpha: 0.62).cgColor
-        layer?.borderColor = NSColor.white.withAlphaComponent(0.10).cgColor
+        layer?.cornerRadius = 22
 
-        iconWellView.translatesAutoresizingMaskIntoConstraints = false
-        iconWellView.wantsLayer = true
-        iconWellView.layer?.cornerRadius = 14
-        iconWellView.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.90).cgColor
-        iconWellView.layer?.shadowColor = NSColor.black.withAlphaComponent(0.12).cgColor
-        iconWellView.layer?.shadowOpacity = 1
-        iconWellView.layer?.shadowRadius = 10
-        iconWellView.layer?.shadowOffset = NSSize(width: 0, height: -2)
+        contentCardView.wantsLayer = true
+        contentCardView.layer?.cornerRadius = 18
+        contentCardView.layer?.masksToBounds = true
 
-        iconView.translatesAutoresizingMaskIntoConstraints = false
-        iconView.imageScaling = .scaleProportionallyUpOrDown
+        titleBarView.wantsLayer = true
+        titleBarView.layer?.cornerRadius = 12
+        titleBarView.layer?.masksToBounds = true
 
-        titleField.translatesAutoresizingMaskIntoConstraints = false
-        titleField.font = .systemFont(ofSize: 14, weight: .semibold)
-        titleField.textColor = NSColor.white.withAlphaComponent(0.96)
+        titleIconView.imageScaling = .scaleProportionallyUpOrDown
+
+        titleField.font = .systemFont(ofSize: 13, weight: .medium)
+        titleField.textColor = NSColor(calibratedWhite: 0.16, alpha: 0.92)
         titleField.lineBreakMode = .byTruncatingTail
 
-        subtitleField.translatesAutoresizingMaskIntoConstraints = false
-        subtitleField.font = .systemFont(ofSize: 11, weight: .regular)
-        subtitleField.textColor = NSColor.white.withAlphaComponent(0.62)
-        subtitleField.lineBreakMode = .byTruncatingTail
+        previewClipView.wantsLayer = true
+        // previewClipView.layer?.cornerRadius = 14
+        previewClipView.layer?.masksToBounds = true
 
-        addSubview(iconWellView)
-        addSubview(iconView)
-        addSubview(titleField)
-        addSubview(subtitleField)
+        previewImageView.imageScaling = .scaleAxesIndependently
 
-        NSLayoutConstraint.activate([
-            widthAnchor.constraint(equalToConstant: 152),
-            heightAnchor.constraint(equalToConstant: 108),
+        placeholderView.wantsLayer = true
+        placeholderView.layer?.backgroundColor = NSColor(calibratedWhite: 0.86, alpha: 0.96).cgColor
 
-            iconWellView.topAnchor.constraint(equalTo: topAnchor, constant: 14),
-            iconWellView.centerXAnchor.constraint(equalTo: centerXAnchor),
-            iconWellView.widthAnchor.constraint(equalToConstant: 42),
-            iconWellView.heightAnchor.constraint(equalToConstant: 42),
+        placeholderIconWellView.wantsLayer = true
+        placeholderIconWellView.layer?.cornerRadius = 14
+        placeholderIconWellView.layer?.backgroundColor =
+            NSColor.white.withAlphaComponent(0.96).cgColor
+        placeholderIconWellView.layer?.shadowColor = NSColor.black.withAlphaComponent(0.10).cgColor
+        placeholderIconWellView.layer?.shadowOpacity = 1
+        placeholderIconWellView.layer?.shadowRadius = 10
+        placeholderIconWellView.layer?.shadowOffset = NSSize(width: 0, height: -2)
 
-            iconView.centerXAnchor.constraint(equalTo: iconWellView.centerXAnchor),
-            iconView.centerYAnchor.constraint(equalTo: iconWellView.centerYAnchor),
-            iconView.widthAnchor.constraint(equalToConstant: 28),
-            iconView.heightAnchor.constraint(equalToConstant: 28),
+        placeholderIconView.imageScaling = .scaleProportionallyUpOrDown
 
-            titleField.topAnchor.constraint(equalTo: iconWellView.bottomAnchor, constant: 12),
-            titleField.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
-            titleField.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
-
-            subtitleField.topAnchor.constraint(equalTo: titleField.bottomAnchor, constant: 4),
-            subtitleField.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
-            subtitleField.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
-        ])
+        addSubview(contentCardView)
+        contentCardView.addSubview(titleBarView)
+        titleBarView.addSubview(titleIconView)
+        titleBarView.addSubview(titleField)
+        contentCardView.addSubview(previewClipView)
+        previewClipView.addSubview(placeholderView)
+        previewClipView.addSubview(previewImageView)
+        placeholderView.addSubview(placeholderIconWellView)
+        placeholderIconWellView.addSubview(placeholderIconView)
     }
 
     required init?(coder: NSCoder) {
         nil
     }
 
+    override func layout() {
+        super.layout()
+
+        contentCardView.frame = bounds.insetBy(dx: 8, dy: 8)
+
+        let titleBarFrame = NSRect(
+            x: Metrics.contentInset,
+            y: contentCardView.bounds.height - Metrics.contentInset - Metrics.titleBarHeight,
+            width: contentCardView.bounds.width - (Metrics.contentInset * 2),
+            height: Metrics.titleBarHeight
+        )
+        titleBarView.frame = titleBarFrame
+
+        titleIconView.frame = NSRect(
+            x: 0,
+            y: (Metrics.titleBarHeight - Metrics.titleIconSize) / 2,
+            width: Metrics.titleIconSize,
+            height: Metrics.titleIconSize
+        )
+        titleField.frame = NSRect(
+            x: Metrics.titleIconSize + 8,
+            y: 4,
+            width: titleBarFrame.width - (Metrics.titleIconSize + 16),
+            height: Metrics.titleBarHeight - 8
+        )
+
+        let previewFrame = NSRect(
+            x: 0,
+            y: 0,
+            width: contentCardView.bounds.width,
+            height: titleBarFrame.minY - Metrics.previewSpacing
+        )
+        previewClipView.frame = previewFrame
+        previewImageView.frame = previewClipView.bounds
+        placeholderView.frame = previewClipView.bounds
+
+        let iconWellSize: CGFloat = 44
+        placeholderIconWellView.frame = NSRect(
+            x: (previewClipView.bounds.width - iconWellSize) / 2,
+            y: (previewClipView.bounds.height - iconWellSize) / 2,
+            width: iconWellSize,
+            height: iconWellSize
+        )
+        placeholderIconView.frame = NSRect(x: 8, y: 8, width: 28, height: 28)
+    }
+
     func configure(with item: SwitcherApp, selected: Bool) {
-        iconView.image = item.icon
-        titleField.stringValue = item.appName
-        subtitleField.stringValue = item.subtitle
-        layer?.backgroundColor = (selected
+        let window = item.primaryWindow
+        titleField.stringValue = window.displayTitle
+        titleIconView.image = item.icon
+        placeholderIconView.image = item.icon
+
+        let thumbnail = ThumbnailCache.shared.image(
+            for: window,
+            targetSize: Metrics.thumbnailTargetSize
+        )
+        previewImageView.image = thumbnail
+        previewImageView.isHidden = (thumbnail == nil)
+        placeholderView.isHidden = (thumbnail != nil)
+
+        contentCardView.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.94).cgColor
+        titleBarView.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.98).cgColor
+        previewClipView.layer?.backgroundColor = NSColor(calibratedWhite: 0.90, alpha: 0.94).cgColor
+
+        layer?.backgroundColor =
+            (selected
+            ? NSColor.controlAccentColor.withAlphaComponent(0.16)
+            : NSColor.clear).cgColor
+        layer?.borderColor =
+            (selected
+            ? NSColor.controlAccentColor.withAlphaComponent(0.94)
+            : NSColor.white.withAlphaComponent(0.18)).cgColor
+        layer?.borderWidth = selected ? 2.5 : 1
+        layer?.shadowColor =
+            (selected
             ? NSColor.controlAccentColor.withAlphaComponent(0.28)
-            : NSColor(calibratedWhite: 0.14, alpha: 0.72)).cgColor
-        layer?.borderColor = (selected
-            ? NSColor.controlAccentColor.withAlphaComponent(0.96)
-            : NSColor.white.withAlphaComponent(0.12)).cgColor
-        layer?.shadowColor = (selected ? NSColor.controlAccentColor.withAlphaComponent(0.28) : NSColor.black.withAlphaComponent(0.12)).cgColor
+            : NSColor.black.withAlphaComponent(0.10)).cgColor
         layer?.shadowOpacity = 1
-        layer?.shadowRadius = selected ? 16 : 8
+        layer?.shadowRadius = selected ? 16 : 10
         layer?.shadowOffset = NSSize(width: 0, height: -2)
-        alphaValue = 1
     }
 }

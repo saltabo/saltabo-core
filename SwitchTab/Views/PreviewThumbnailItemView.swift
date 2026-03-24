@@ -4,6 +4,7 @@ final class PreviewThumbnailItemView: NSView {
     var onActivate: (() -> Void)?
 
     private let imageView = NSImageView()
+    private let placeholderIconView = NSImageView()
     private let titleField = NSTextField(labelWithString: "")
     private let subtitleField = NSTextField(labelWithString: "")
     private let hoverLayer = CALayer()
@@ -29,9 +30,15 @@ final class PreviewThumbnailItemView: NSView {
         imageView.wantsLayer = true
         imageView.layer?.cornerRadius = 12
         imageView.layer?.masksToBounds = true
+        imageView.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.08).cgColor
+
+        placeholderIconView.translatesAutoresizingMaskIntoConstraints = false
+        placeholderIconView.imageScaling = .scaleProportionallyUpOrDown
+        placeholderIconView.isHidden = true
 
         titleField.translatesAutoresizingMaskIntoConstraints = false
         titleField.font = .systemFont(ofSize: 13, weight: .semibold)
+        titleField.textColor = NSColor.labelColor
         titleField.lineBreakMode = .byTruncatingTail
 
         subtitleField.translatesAutoresizingMaskIntoConstraints = false
@@ -40,6 +47,7 @@ final class PreviewThumbnailItemView: NSView {
         subtitleField.lineBreakMode = .byTruncatingTail
 
         addSubview(imageView)
+        addSubview(placeholderIconView)
         addSubview(titleField)
         addSubview(subtitleField)
 
@@ -51,6 +59,11 @@ final class PreviewThumbnailItemView: NSView {
             imageView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
             imageView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
             imageView.heightAnchor.constraint(equalToConstant: 132),
+
+            placeholderIconView.centerXAnchor.constraint(equalTo: imageView.centerXAnchor),
+            placeholderIconView.centerYAnchor.constraint(equalTo: imageView.centerYAnchor),
+            placeholderIconView.widthAnchor.constraint(equalToConstant: 42),
+            placeholderIconView.heightAnchor.constraint(equalToConstant: 42),
 
             titleField.topAnchor.constraint(equalTo: imageView.bottomAnchor, constant: 10),
             titleField.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
@@ -69,6 +82,10 @@ final class PreviewThumbnailItemView: NSView {
     override func layout() {
         super.layout()
         hoverLayer.frame = bounds
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        bounds.contains(point) ? self : nil
     }
 
     override func updateTrackingAreas() {
@@ -91,7 +108,8 @@ final class PreviewThumbnailItemView: NSView {
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.14
             hoverLayer.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.18).cgColor
-            animator().frame = frame.insetBy(dx: -2, dy: -2)
+            layer?.borderWidth = 1
+            layer?.borderColor = NSColor.controlAccentColor.withAlphaComponent(0.7).cgColor
         }
     }
 
@@ -99,10 +117,16 @@ final class PreviewThumbnailItemView: NSView {
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.14
             hoverLayer.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.0).cgColor
+            layer?.borderWidth = 0
+            layer?.borderColor = NSColor.clear.cgColor
         }
     }
 
-    override func mouseUp(with event: NSEvent) {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
+    }
+
+    override func mouseDown(with event: NSEvent) {
         onActivate?()
     }
 
@@ -110,5 +134,7 @@ final class PreviewThumbnailItemView: NSView {
         titleField.stringValue = window.displayTitle
         subtitleField.stringValue = subtitle
         imageView.image = image
+        placeholderIconView.image = window.icon
+        placeholderIconView.isHidden = image != nil
     }
 }

@@ -10,10 +10,9 @@ final class MenuBarManager: NSObject {
         item.button?.image = NSImage(systemSymbolName: "macwindow.badge.plus", accessibilityDescription: "SwitchTab")
 
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "Open App Switcher", action: #selector(openSwitcher), keyEquivalent: "t"))
         menu.addItem(NSMenuItem(title: "Request Permissions", action: #selector(openPermissionsFlow), keyEquivalent: "p"))
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q"))
+        menu.addItem(NSMenuItem(title: "Quit SwitchTab", action: #selector(quit), keyEquivalent: "q"))
         menu.items.forEach { $0.target = self }
 
         item.menu = menu

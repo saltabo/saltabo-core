@@ -3,6 +3,10 @@ import AppKit
 final class DockPreviewManager {
     static let shared = DockPreviewManager()
 
+    private enum Timing {
+        static let hideGraceInterval: TimeInterval = 0.24
+    }
+
     private let accessibilityService = AccessibilityService.shared
     private let windowService = SpaceAwareWindowService.shared
     private let previewWindow = PreviewPanelWindow()
@@ -10,15 +14,19 @@ final class DockPreviewManager {
     private var monitor: Any?
     private var pollingTimer: Timer?
     private var currentBundleIdentifier: String?
+    private var pendingHideWorkItem: DispatchWorkItem?
 
     private init() {}
 
     func start() {
-        monitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDown, .rightMouseDown]) { [weak self] event in
+        monitor = NSEvent.addGlobalMonitorForEvents(matching: [
+            .mouseMoved, .leftMouseDown, .rightMouseDown,
+        ]) { [weak self] event in
             self?.handle(event: event)
         }
 
-        pollingTimer = Timer.scheduledTimer(withTimeInterval: 0.18, repeats: true) { [weak self] _ in
+        pollingTimer = Timer.scheduledTimer(withTimeInterval: 0.18, repeats: true) {
+            [weak self] _ in
             self?.refreshForCurrentMouseLocation()
         }
     }
@@ -37,16 +45,29 @@ final class DockPreviewManager {
         case .mouseMoved:
             refreshForCurrentMouseLocation()
         default:
+            if previewWindow.contains(screenPoint: NSEvent.mouseLocation) {
+                return
+            }
             hidePreview()
         }
     }
 
     private func refreshForCurrentMouseLocation() {
         let location = NSEvent.mouseLocation
-        guard let app = accessibilityService.hoveredDockApplication(at: location) else {
-            hidePreview()
+
+        guard let hoverMatch = accessibilityService.hoveredDockMatch(at: location) else {
+            if previewWindow.contains(screenPoint: location) {
+                cancelPendingHide()
+                return
+            }
+            scheduleHidePreview()
             return
         }
+
+        cancelPendingHide()
+
+        let app = hoverMatch.app
+        let anchorPoint = CGPoint(x: hoverMatch.frame.midX, y: hoverMatch.frame.midY)
 
         if currentBundleIdentifier == app.bundleIdentifier, previewWindowIsUseful {
             return
@@ -60,18 +81,39 @@ final class DockPreviewManager {
 
         currentBundleIdentifier = app.bundleIdentifier
         ThumbnailCache.shared.warm(windows, targetSize: NSSize(width: 236, height: 132))
-        previewWindow.show(windows: windows, appName: app.localizedName ?? "App", anchorPoint: location) { [weak self] window in
+        previewWindow.show(
+            windows: windows, appName: app.localizedName ?? "App", anchorPoint: anchorPoint
+        ) { [weak self] window in
             self?.windowService.focus(window: window)
             self?.hidePreview()
         }
     }
 
     private var previewWindowIsUseful: Bool {
-        currentBundleIdentifier != nil
+        currentBundleIdentifier != nil && previewWindow.isVisible
     }
 
     private func hidePreview() {
+        cancelPendingHide()
         currentBundleIdentifier = nil
         previewWindow.hide()
+    }
+
+    private func scheduleHidePreview() {
+        guard currentBundleIdentifier != nil else { return }
+        guard pendingHideWorkItem == nil else { return }
+
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.pendingHideWorkItem = nil
+            self?.hidePreview()
+        }
+        pendingHideWorkItem = workItem
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + Timing.hideGraceInterval, execute: workItem)
+    }
+
+    private func cancelPendingHide() {
+        pendingHideWorkItem?.cancel()
+        pendingHideWorkItem = nil
     }
 }

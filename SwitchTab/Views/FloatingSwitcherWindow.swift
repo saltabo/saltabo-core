@@ -7,11 +7,10 @@ private final class SwitcherPanel: NSPanel {
 
 final class FloatingSwitcherWindow {
     private enum Metrics {
-        static let itemSize = NSSize(width: 152, height: 108)
+        static let itemSize = NSSize(width: 236, height: 164)
         static let itemSpacing: CGFloat = 14
-        static let contentInset = NSEdgeInsets(top: 20, left: 20, bottom: 20, right: 20)
-        static let panelInset: CGFloat = 10
-        static let panelHeight: CGFloat = 168
+        static let contentInset = NSEdgeInsets(top: 14, left: 14, bottom: 14, right: 14)
+        static let panelInset: CGFloat = 12
     }
 
     private let panel: NSPanel
@@ -22,7 +21,7 @@ final class FloatingSwitcherWindow {
 
     init() {
         panel = SwitcherPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 420, height: Metrics.panelHeight),
+            contentRect: NSRect(x: 0, y: 0, width: 640, height: 208),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -58,7 +57,8 @@ final class FloatingSwitcherWindow {
         blurView.layer?.masksToBounds = true
 
         tintView.wantsLayer = true
-        tintView.layer?.backgroundColor = NSColor(calibratedRed: 0.16, green: 0.18, blue: 0.22, alpha: 0.34).cgColor
+        tintView.layer?.backgroundColor =
+            NSColor(calibratedRed: 0.36, green: 0.50, blue: 0.88, alpha: 0.22).cgColor
 
         rootView.addSubview(backgroundCardView)
         backgroundCardView.addSubview(blurView)
@@ -101,12 +101,14 @@ final class FloatingSwitcherWindow {
     }
 
     func hide() {
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.1
-            panel.animator().alphaValue = 0
-        }, completionHandler: {
-            self.panel.orderOut(nil)
-        })
+        NSAnimationContext.runAnimationGroup(
+            { context in
+                context.duration = 0.1
+                panel.animator().alphaValue = 0
+            },
+            completionHandler: {
+                self.panel.orderOut(nil)
+            })
     }
 
     private func rebuild(items: [SwitcherApp], selectedIndex: Int) {
@@ -128,19 +130,24 @@ final class FloatingSwitcherWindow {
 
     private func layoutChrome(panelSize: NSSize) {
         rootView.frame = NSRect(origin: .zero, size: panelSize)
-        backgroundCardView.frame = rootView.bounds.insetBy(dx: Metrics.panelInset, dy: Metrics.panelInset)
+        backgroundCardView.frame = rootView.bounds.insetBy(
+            dx: Metrics.panelInset, dy: Metrics.panelInset)
         blurView.frame = backgroundCardView.bounds
         tintView.frame = backgroundCardView.bounds
     }
 
     private func panelSize(for itemCount: Int) -> NSSize {
-        let contentWidth = Metrics.contentInset.left
+        let contentWidth =
+            Metrics.contentInset.left
             + Metrics.contentInset.right
             + CGFloat(itemCount) * Metrics.itemSize.width
             + CGFloat(max(itemCount - 1, 0)) * Metrics.itemSpacing
-        let minimumWidth = Metrics.itemSize.width + Metrics.contentInset.left + Metrics.contentInset.right + Metrics.panelInset * 2
+        let contentHeight = Metrics.contentInset.top + Metrics.contentInset.bottom + Metrics.itemSize.height
+        let minimumWidth =
+            Metrics.itemSize.width + Metrics.contentInset.left + Metrics.contentInset.right
+            + Metrics.panelInset * 2
         let width = max(minimumWidth, contentWidth + Metrics.panelInset * 2)
-        return NSSize(width: width, height: Metrics.panelHeight)
+        return NSSize(width: width, height: contentHeight + Metrics.panelInset * 2)
     }
 
     private func screenForPresentation() -> NSScreen? {
