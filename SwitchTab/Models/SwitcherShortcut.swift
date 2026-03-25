@@ -39,6 +39,15 @@ enum SwitcherShortcut: String, CaseIterable {
         }
     }
 
+    var requiresInputMonitoring: Bool {
+        switch self {
+        case .commandTab:
+            return true
+        case .optionTab, .controlTab:
+            return false
+        }
+    }
+
     func matches(tabKeyCode: Int64, flags: CGEventFlags) -> Bool {
         tabKeyCode == 48 && flags.contains(modifierFlags)
     }
@@ -57,6 +66,7 @@ final class AppSettings {
 
     private enum Keys {
         static let switcherShortcut = "switchtab.switcherShortcut"
+        static let suppressMoveToApplicationsPrompt = "switchtab.suppressMoveToApplicationsPrompt"
     }
 
     private let defaults = UserDefaults.standard
@@ -77,6 +87,15 @@ final class AppSettings {
             guard newValue != switcherShortcut else { return }
             defaults.set(newValue.rawValue, forKey: Keys.switcherShortcut)
             NotificationCenter.default.post(name: .switcherShortcutDidChange, object: newValue)
+        }
+    }
+
+    var suppressMoveToApplicationsPrompt: Bool {
+        get {
+            defaults.bool(forKey: Keys.suppressMoveToApplicationsPrompt)
+        }
+        set {
+            defaults.set(newValue, forKey: Keys.suppressMoveToApplicationsPrompt)
         }
     }
 }

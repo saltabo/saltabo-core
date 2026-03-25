@@ -239,6 +239,12 @@ final class SpaceAwareWindowService {
         if !titledWindows.isEmpty {
             return titledWindows
         }
+
+        let previewableWindows = windows.filter(hasRenderablePreview)
+        if !previewableWindows.isEmpty {
+            return previewableWindows
+        }
+
         return windows
     }
 
@@ -251,6 +257,10 @@ final class SpaceAwareWindowService {
             .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
 
         return normalizedTitle != normalizedAppName
+    }
+
+    private func hasRenderablePreview(_ window: WindowDescriptor) -> Bool {
+        ThumbnailCache.shared.image(for: window, targetSize: NSSize(width: 64, height: 40)) != nil
     }
 
     private func chromeMatchScore(
@@ -324,7 +334,10 @@ final class SpaceAwareWindowService {
         // Excluding these keeps the preview list focused on real editor/project windows.
         if app.bundleIdentifier == "com.apple.dt.Xcode" {
             let ignoredXcodeTitles: Set<String> = [
-                "App Shortcuts Preview"
+                "App Shortcuts Preview",
+                "Archives",
+                "Organizer",
+                "Devices and Simulators"
             ]
             if ignoredXcodeTitles.contains(title) {
                 return false

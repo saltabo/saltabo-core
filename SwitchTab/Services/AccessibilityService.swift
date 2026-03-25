@@ -19,9 +19,14 @@ final class AccessibilityService {
     struct PermissionSnapshot {
         let accessibilityGranted: Bool
         let inputMonitoringGranted: Bool
+        let screenRecordingGranted: Bool
 
-        var allGranted: Bool {
-            accessibilityGranted && inputMonitoringGranted
+        func corePermissionsGranted(for shortcut: SwitcherShortcut) -> Bool {
+            accessibilityGranted && (!shortcut.requiresInputMonitoring || inputMonitoringGranted)
+        }
+
+        func allGranted(for shortcut: SwitcherShortcut) -> Bool {
+            corePermissionsGranted(for: shortcut) && screenRecordingGranted
         }
     }
 
@@ -30,51 +35,29 @@ final class AccessibilityService {
     func currentPermissionSnapshot() -> PermissionSnapshot {
         PermissionSnapshot(
             accessibilityGranted: AXIsProcessTrusted(),
-            inputMonitoringGranted: CGPreflightListenEventAccess()
+            inputMonitoringGranted: CGPreflightListenEventAccess(),
+            screenRecordingGranted: CGPreflightScreenCaptureAccess()
         )
     }
 
     @discardableResult
     func requestRequiredPermissions() -> PermissionSnapshot {
-        let currentSnapshot = currentPermissionSnapshot()
-
-        if !currentSnapshot.accessibilityGranted {
-            let accessibilityOptions: [String: Bool] = [
-                kAXTrustedCheckOptionPrompt.takeRetainedValue() as String: true
-            ]
-
-            let accessibilityGranted = AXIsProcessTrustedWithOptions(
-                accessibilityOptions as CFDictionary)
-            return PermissionSnapshot(
-                accessibilityGranted: accessibilityGranted,
-                inputMonitoringGranted: currentSnapshot.inputMonitoringGranted
-            )
-        }
-
-        if !currentSnapshot.inputMonitoringGranted {
-            let inputMonitoringGranted =
-                CGPreflightListenEventAccess() || CGRequestListenEventAccess()
-            return PermissionSnapshot(
-                accessibilityGranted: currentSnapshot.accessibilityGranted,
-                inputMonitoringGranted: inputMonitoringGranted
-            )
-        }
-
-        return currentSnapshot
+        currentPermissionSnapshot()
     }
 
     @discardableResult
     func requestAccessibilityPermission() -> Bool {
-        let accessibilityOptions: [String: Bool] = [
-            kAXTrustedCheckOptionPrompt.takeRetainedValue() as String: true
-        ]
+        AXIsProcessTrusted()
+    }
 
-        return AXIsProcessTrustedWithOptions(accessibilityOptions as CFDictionary)
+    @discardableResult
+    func requestScreenRecordingPermission() -> Bool {
+        CGPreflightScreenCaptureAccess()
     }
 
     @discardableResult
     func requestInputMonitoringPermission() -> Bool {
-        CGPreflightListenEventAccess() || CGRequestListenEventAccess()
+        CGRequestListenEventAccess()
     }
 
     func openAccessibilitySettings() {
@@ -83,6 +66,10 @@ final class AccessibilityService {
 
     func openInputMonitoringSettings() {
         openSystemSettings("x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")
+    }
+
+    func openScreenRecordingSettings() {
+        openSystemSettings("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
     }
 
     func presentPermissionAlertIfNeeded() {

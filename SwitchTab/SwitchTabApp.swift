@@ -4,6 +4,7 @@ import AppKit
 final class SwitchTabApp: NSObject, NSApplicationDelegate {
     private var appSwitcherManager: AppSwitcherManager { .shared }
     private var dockPreviewManager: DockPreviewManager { .shared }
+    private var hasStartedServices = false
     private var isSmokeTestMode: Bool {
         ProcessInfo.processInfo.arguments.contains("--ui-smoke-test")
     }
@@ -17,7 +18,23 @@ final class SwitchTabApp: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        _ = AccessibilityService.shared.requestRequiredPermissions()
+        if MoveToApplicationsManager.shared.promptIfNeeded() {
+            return
+        }
+
+        if PermissionsWindowController.shared.presentIfNeeded(onContinue: { [weak self] in
+            self?.startServicesIfNeeded()
+        }) {
+            return
+        }
+
+        startServicesIfNeeded()
+    }
+
+    private func startServicesIfNeeded() {
+        guard !hasStartedServices else { return }
+        hasStartedServices = true
+
         MenuBarManager.shared.setup()
         appSwitcherManager.start()
         dockPreviewManager.start()

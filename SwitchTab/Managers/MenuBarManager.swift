@@ -30,7 +30,9 @@ final class MenuBarManager: NSObject {
     }
 
     @objc private func openSettings() {
-        SettingsWindowController.shared.showSettings()
+        DispatchQueue.main.async {
+            SettingsWindowController.shared.showSettings()
+        }
     }
 
     @objc private func quit() {

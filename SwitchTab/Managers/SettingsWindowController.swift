@@ -22,7 +22,7 @@ private final class BadgeStatusView: NSView {
             label.centerXAnchor.constraint(equalTo: centerXAnchor),
             label.centerYAnchor.constraint(equalTo: centerYAnchor),
             label.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 12),
-            label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -12)
+            label.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -12),
         ])
     }
 
@@ -43,8 +43,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let shortcutPopup = NSPopUpButton()
     private let accessibilityStatusField = BadgeStatusView(frame: .zero)
     private let inputMonitoringStatusField = BadgeStatusView(frame: .zero)
+    private let permissionsStack = NSStackView()
     private var shouldRestoreAfterSystemSettings = false
-    private var hasPromptedForPermissionsThisSession = false
+    private var wasSuppressedForSwitcher = false
 
     private init() {
         let window = NSWindow(
@@ -59,6 +60,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.title = "Settings"
         window.center()
         window.isReleasedWhenClosed = false
+        window.level = .normal
+        window.collectionBehavior = [.moveToActiveSpace]
+        window.animationBehavior = .utilityWindow
         window.delegate = self
         window.contentView = buildContentView()
 
@@ -90,11 +94,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func showSettings() {
-        autoPromptForMissingPermissionsIfNeeded()
         syncShortcutSelection()
         refreshPermissionState()
         NSApp.setActivationPolicy(.regular)
         showWindow(nil)
+        window?.orderFrontRegardless()
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -104,6 +108,40 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         shouldRestoreAfterSystemSettings = false
         window.orderOut(nil)
         NSApp.setActivationPolicy(.accessory)
+    }
+
+    func suppressForSwitcherIfVisible() {
+        guard let window, window.isVisible else { return }
+        shouldRestoreAfterSystemSettings = false
+        wasSuppressedForSwitcher = true
+        window.orderOut(nil)
+    }
+
+    func finishSwitcherInteraction(didActivateOtherApp: Bool) {
+        defer {
+            wasSuppressedForSwitcher = false
+        }
+
+        guard wasSuppressedForSwitcher else {
+            if didActivateOtherApp {
+                NSApp.setActivationPolicy(.accessory)
+            }
+            return
+        }
+
+        guard let window else { return }
+
+        if didActivateOtherApp {
+            window.orderOut(nil)
+            NSApp.setActivationPolicy(.accessory)
+            return
+        }
+
+        NSApp.setActivationPolicy(.regular)
+        showWindow(nil)
+        window.orderFrontRegardless()
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     func prepareToRestoreAfterSystemSettings() {
@@ -122,27 +160,27 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
         container.addArrangedSubview(makeSectionTitle("Keyboard Shortcut"))
         container.addArrangedSubview(makeShortcutRow())
-        container.addArrangedSubview(makeSectionNote("Changes apply immediately to the global switcher shortcut."))
+        container.addArrangedSubview(
+            makeSectionNote("Changes apply immediately to the global switcher shortcut."))
         container.addArrangedSubview(makeDivider())
         container.addArrangedSubview(makeSectionTitle("Permissions"))
-        container.addArrangedSubview(makePermissionRow(
-            title: "Accessibility",
-            statusField: accessibilityStatusField,
-            openAction: #selector(openAccessibilitySettings)
-        ))
-        container.addArrangedSubview(makePermissionRow(
-            title: "Input Monitoring",
-            statusField: inputMonitoringStatusField,
-            openAction: #selector(openInputMonitoringSettings)
-        ))
-        container.addArrangedSubview(makeSectionNote("SwitchTab will ask for missing permissions automatically. If macOS does not show the prompt again, use Open Settings and enable SwitchTab manually."))
+        permissionsStack.orientation = .vertical
+        permissionsStack.alignment = .leading
+        permissionsStack.spacing = 10
+        permissionsStack.translatesAutoresizingMaskIntoConstraints = false
+        container.addArrangedSubview(permissionsStack)
+        container.addArrangedSubview(
+            makeSectionNote(
+                "SwitchTab uses Accessibility for switching. Command + Tab also needs Input Monitoring on macOS."
+            ))
 
         rootView.addSubview(container)
         NSLayoutConstraint.activate([
             container.topAnchor.constraint(equalTo: rootView.topAnchor, constant: 24),
             container.leadingAnchor.constraint(equalTo: rootView.leadingAnchor, constant: 24),
             container.trailingAnchor.constraint(equalTo: rootView.trailingAnchor, constant: -24),
-            container.bottomAnchor.constraint(lessThanOrEqualTo: rootView.bottomAnchor, constant: -24)
+            container.bottomAnchor.constraint(
+                lessThanOrEqualTo: rootView.bottomAnchor, constant: -24),
         ])
 
         return rootView
@@ -235,6 +273,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     @objc private func refreshPermissionState() {
         let snapshot = AccessibilityService.shared.currentPermissionSnapshot()
+        rebuildPermissionRows(for: AppSettings.shared.switcherShortcut)
         applyStatus(snapshot.accessibilityGranted, to: accessibilityStatusField)
         applyStatus(snapshot.inputMonitoringGranted, to: inputMonitoringStatusField)
     }
@@ -251,20 +290,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         )
     }
 
-    private func autoPromptForMissingPermissionsIfNeeded() {
-        let snapshot = AccessibilityService.shared.currentPermissionSnapshot()
-        guard !snapshot.allGranted, !hasPromptedForPermissionsThisSession else { return }
-        hasPromptedForPermissionsThisSession = true
-        _ = AccessibilityService.shared.requestRequiredPermissions()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            self.refreshPermissionState()
-            AppSwitcherManager.shared.start()
-        }
-    }
-
     @objc private func handleWorkspaceAppDeactivation(_ notification: Notification) {
         guard shouldRestoreAfterSystemSettings,
-            let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+            let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
+                as? NSRunningApplication,
             app.bundleIdentifier == "com.apple.systempreferences"
                 || app.bundleIdentifier == "com.apple.SystemSettings"
         else {
@@ -282,6 +311,32 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         shouldRestoreAfterSystemSettings = false
+        wasSuppressedForSwitcher = false
         NSApp.setActivationPolicy(.accessory)
+    }
+
+    private func rebuildPermissionRows(for shortcut: SwitcherShortcut) {
+        let desiredRows: [NSView] = {
+            let accessibilityRow = makePermissionRow(
+                title: "Accessibility",
+                statusField: accessibilityStatusField,
+                openAction: #selector(openAccessibilitySettings)
+            )
+            if shortcut.requiresInputMonitoring {
+                let inputMonitoringRow = makePermissionRow(
+                    title: "Input Monitoring",
+                    statusField: inputMonitoringStatusField,
+                    openAction: #selector(openInputMonitoringSettings)
+                )
+                return [accessibilityRow, inputMonitoringRow]
+            }
+            return [accessibilityRow]
+        }()
+
+        permissionsStack.arrangedSubviews.forEach {
+            permissionsStack.removeArrangedSubview($0)
+            $0.removeFromSuperview()
+        }
+        desiredRows.forEach { permissionsStack.addArrangedSubview($0) }
     }
 }

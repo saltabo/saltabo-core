@@ -36,8 +36,8 @@ final class AppSwitcherManager {
     }
 
     private func installEventTap() {
-        let permissions = permissionService.requestRequiredPermissions()
-        guard permissions.allGranted else {
+        let permissions = permissionService.currentPermissionSnapshot()
+        guard permissions.corePermissionsGranted(for: AppSettings.shared.switcherShortcut) else {
             return
         }
 
@@ -116,9 +116,9 @@ final class AppSwitcherManager {
 
     private func advanceSelection(reverse: Bool, explicitOpen: Bool) {
         if items.isEmpty || explicitOpen {
-            SettingsWindowController.shared.hideSettingsIfVisible()
             items = stabilizedCycleItems(from: windowService.currentSpaceApplications(on: activeScreen()))
             guard !items.isEmpty else { return }
+            SettingsWindowController.shared.suppressForSwitcherIfVisible()
             ThumbnailCache.shared.warm(items.flatMap(\.windows), targetSize: NSSize(width: 236, height: 132))
             selectedIndex = nextSelectionIndex(in: items, reverse: reverse)
             floatingWindow.show(items: items, selectedIndex: selectedIndex)
@@ -135,6 +135,7 @@ final class AppSwitcherManager {
             items = []
             selectedIndex = 0
             floatingWindow.hide()
+            SettingsWindowController.shared.finishSwitcherInteraction(didActivateOtherApp: true)
         }
 
         guard items.indices.contains(selectedIndex) else { return }
@@ -145,6 +146,7 @@ final class AppSwitcherManager {
         items = []
         selectedIndex = 0
         floatingWindow.hide()
+        SettingsWindowController.shared.finishSwitcherInteraction(didActivateOtherApp: false)
     }
 
     private func stabilizedCycleItems(from fetchedItems: [SwitcherApp]) -> [SwitcherApp] {
