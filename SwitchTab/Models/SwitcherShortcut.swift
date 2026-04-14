@@ -59,6 +59,8 @@ enum SwitcherShortcut: String, CaseIterable {
 
 extension Notification.Name {
     static let switcherShortcutDidChange = Notification.Name("SwitchTab.switcherShortcutDidChange")
+    static let switcherAvailabilityDidChange = Notification.Name(
+        "SwitchTab.switcherAvailabilityDidChange")
 }
 
 final class AppSettings {

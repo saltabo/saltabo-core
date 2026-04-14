@@ -19,6 +19,21 @@ final class SpaceAwareWindowService {
         return groupApplications(from: visibleWindows)
     }
 
+    func switcherApplications(on screen: NSScreen?) -> [SwitcherApp] {
+        let screenScoped = currentSpaceApplications(on: screen)
+        if !screenScoped.isEmpty {
+            return screenScoped
+        }
+
+        let currentSpace = currentSpaceApplications()
+        if !currentSpace.isEmpty {
+            return currentSpace
+        }
+
+        let allWindows = fetchWindows(options: [.optionAll])
+        return groupApplications(from: allWindows)
+    }
+
     func windowsForDockPreview(for app: NSRunningApplication) -> [WindowDescriptor] {
         let allWindows = fetchWindows(options: [.optionAll])
             .filter { $0.pid == app.processIdentifier }
@@ -103,9 +118,11 @@ final class SpaceAwareWindowService {
             let layer = rawWindow[kCGWindowLayer as String] as? Int ?? 1
             let alpha = rawWindow[kCGWindowAlpha as String] as? Double ?? 0
             let ownerName = rawWindow[kCGWindowOwnerName as String] as? String ?? ""
-            let sharingState = rawWindow[kCGWindowSharingState as String] as? Int ?? 0
 
-            guard layer == 0, alpha > 0.05, sharingState != 0 else { return nil }
+            // Do not gate switcher candidates on sharingState: after app identity
+            // changes (bundle-id / TCC reset), windows can report unshareable and
+            // still be valid targets for activation.
+            guard layer == 0, alpha > 0.05 else { return nil }
             guard let id = rawWindow[kCGWindowNumber as String] as? UInt32,
                   let pid = rawWindow[kCGWindowOwnerPID as String] as? pid_t,
                   pid != ownPID,

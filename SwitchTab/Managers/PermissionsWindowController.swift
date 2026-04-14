@@ -170,14 +170,8 @@ final class PermissionsWindowController: NSWindowController, NSWindowDelegate {
         description: "Needed to focus windows after you release the shortcut.",
         buttonTitle: "Open Accessibility Settings"
     )
-    private let inputMonitoringCard = PermissionCardView(
-        title: "Input Monitoring",
-        description: "Needed for macOS to let SwitchTab intercept Command + Tab globally.",
-        buttonTitle: "Open Input Monitoring Settings"
-    )
     private let cardsStack = NSStackView()
     private var accessibilityCardWidthConstraint: NSLayoutConstraint?
-    private var inputMonitoringCardWidthConstraint: NSLayoutConstraint?
 
     private var onContinue: (() -> Void)?
     private var didContinue = false
@@ -199,8 +193,6 @@ final class PermissionsWindowController: NSWindowController, NSWindowDelegate {
         window.contentView = buildContentView()
 
         accessibilityCard.setButtonTarget(self, action: #selector(openAccessibilitySettings))
-        inputMonitoringCard.setButtonTarget(self, action: #selector(openInputMonitoringSettings))
-
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(refreshStatus),
@@ -224,6 +216,10 @@ final class PermissionsWindowController: NSWindowController, NSWindowDelegate {
         let shortcut = AppSettings.shared.switcherShortcut
         guard !snapshot.corePermissionsGranted(for: shortcut) else {
             return false
+        }
+        if shortcut.requiresInputMonitoring && !snapshot.inputMonitoringGranted {
+            _ = AccessibilityService.shared.requestInputMonitoringPermission()
+            AccessibilityService.shared.openInputMonitoringSettings()
         }
 
         self.onContinue = onContinue
@@ -302,8 +298,6 @@ final class PermissionsWindowController: NSWindowController, NSWindowDelegate {
     @objc private func refreshStatus() {
         let snapshot = AccessibilityService.shared.currentPermissionSnapshot()
         let shortcut = AppSettings.shared.switcherShortcut
-        rebuildCards(for: shortcut)
-
         accessibilityCard.configure(
             icon: NSImage(systemSymbolName: "accessibility", accessibilityDescription: nil),
             iconTint: .systemBlue,
@@ -311,15 +305,6 @@ final class PermissionsWindowController: NSWindowController, NSWindowDelegate {
             granted: snapshot.accessibilityGranted,
             required: true
         )
-        if shortcut.requiresInputMonitoring {
-            inputMonitoringCard.configure(
-                icon: NSImage(systemSymbolName: "keyboard", accessibilityDescription: nil),
-                iconTint: .secondaryLabelColor,
-                iconBackground: NSColor.secondaryLabelColor.withAlphaComponent(0.12),
-                granted: snapshot.inputMonitoringGranted,
-                required: true
-            )
-        }
         if snapshot.corePermissionsGranted(for: shortcut) && !didContinue {
             didContinue = true
             window?.orderOut(nil)
@@ -339,42 +324,5 @@ final class PermissionsWindowController: NSWindowController, NSWindowDelegate {
 
     @objc private func openAccessibilitySettings() {
         AccessibilityService.shared.openAccessibilitySettings()
-    }
-
-    @objc private func openInputMonitoringSettings() {
-        AccessibilityService.shared.openInputMonitoringSettings()
-    }
-
-    private func rebuildCards(for shortcut: SwitcherShortcut) {
-        let desiredCards: [NSView] =
-            shortcut.requiresInputMonitoring
-            ? [accessibilityCard, inputMonitoringCard]
-            : [accessibilityCard]
-
-        let currentCards = cardsStack.arrangedSubviews
-        if currentCards.count == desiredCards.count
-            && zip(currentCards, desiredCards).allSatisfy({ $0 === $1 })
-        {
-            return
-        }
-
-        currentCards.forEach {
-            cardsStack.removeArrangedSubview($0)
-            $0.removeFromSuperview()
-        }
-        desiredCards.forEach { card in
-            cardsStack.addArrangedSubview(card)
-            if card === accessibilityCard {
-                accessibilityCardWidthConstraint?.isActive = false
-                accessibilityCardWidthConstraint = accessibilityCard.widthAnchor.constraint(
-                    equalTo: cardsStack.widthAnchor)
-                accessibilityCardWidthConstraint?.isActive = true
-            } else if card === inputMonitoringCard {
-                inputMonitoringCardWidthConstraint?.isActive = false
-                inputMonitoringCardWidthConstraint = inputMonitoringCard.widthAnchor.constraint(
-                    equalTo: cardsStack.widthAnchor)
-                inputMonitoringCardWidthConstraint?.isActive = true
-            }
-        }
     }
 }
