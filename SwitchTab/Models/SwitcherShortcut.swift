@@ -39,15 +39,6 @@ enum SwitcherShortcut: String, CaseIterable {
         }
     }
 
-    var requiresInputMonitoring: Bool {
-        switch self {
-        case .commandTab:
-            return true
-        case .optionTab, .controlTab:
-            return false
-        }
-    }
-
     func matches(tabKeyCode: Int64, flags: CGEventFlags) -> Bool {
         tabKeyCode == 48 && flags.contains(modifierFlags)
     }

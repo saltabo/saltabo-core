@@ -42,7 +42,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     private let shortcutPopup = NSPopUpButton()
     private let accessibilityStatusField = BadgeStatusView(frame: .zero)
-    private let inputMonitoringStatusField = BadgeStatusView(frame: .zero)
+    private let screenRecordingStatusField = BadgeStatusView(frame: .zero)
     private let permissionsStack = NSStackView()
     private var shouldRestoreAfterSystemSettings = false
     private var wasSuppressedForSwitcher = false
@@ -171,7 +171,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         container.addArrangedSubview(permissionsStack)
         container.addArrangedSubview(
             makeSectionNote(
-                "SwitchTab uses Accessibility for switching. Command + Tab also needs Input Monitoring on macOS."
+                "SwitchTab needs Accessibility and Screen Recording."
             ))
 
         rootView.addSubview(container)
@@ -266,16 +266,17 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         AccessibilityService.shared.openAccessibilitySettings()
     }
 
-    @objc private func openInputMonitoringSettings() {
+    @objc private func openScreenRecordingSettings() {
         prepareToRestoreAfterSystemSettings()
-        AccessibilityService.shared.openInputMonitoringSettings()
+        _ = AccessibilityService.shared.requestScreenRecordingPermission()
+        AccessibilityService.shared.openScreenRecordingSettings()
     }
 
     @objc private func refreshPermissionState() {
         let snapshot = AccessibilityService.shared.currentPermissionSnapshot()
-        rebuildPermissionRows(for: AppSettings.shared.switcherShortcut)
+        rebuildPermissionRows()
         applyStatus(snapshot.accessibilityGranted, to: accessibilityStatusField)
-        applyStatus(snapshot.inputMonitoringGranted, to: inputMonitoringStatusField)
+        applyStatus(snapshot.screenRecordingGranted, to: screenRecordingStatusField)
     }
 
     private func applyStatus(_ granted: Bool, to field: BadgeStatusView) {
@@ -315,23 +316,19 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         NSApp.setActivationPolicy(.accessory)
     }
 
-    private func rebuildPermissionRows(for shortcut: SwitcherShortcut) {
-        let desiredRows: [NSView] = {
-            let accessibilityRow = makePermissionRow(
+    private func rebuildPermissionRows() {
+        let desiredRows: [NSView] = [
+            makePermissionRow(
                 title: "Accessibility",
                 statusField: accessibilityStatusField,
                 openAction: #selector(openAccessibilitySettings)
-            )
-            if shortcut.requiresInputMonitoring {
-                let inputMonitoringRow = makePermissionRow(
-                    title: "Input Monitoring",
-                    statusField: inputMonitoringStatusField,
-                    openAction: #selector(openInputMonitoringSettings)
-                )
-                return [accessibilityRow, inputMonitoringRow]
-            }
-            return [accessibilityRow]
-        }()
+            ),
+            makePermissionRow(
+                title: "Screen Recording",
+                statusField: screenRecordingStatusField,
+                openAction: #selector(openScreenRecordingSettings)
+            ),
+        ]
 
         permissionsStack.arrangedSubviews.forEach {
             permissionsStack.removeArrangedSubview($0)

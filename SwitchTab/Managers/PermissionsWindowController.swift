@@ -170,8 +170,14 @@ final class PermissionsWindowController: NSWindowController, NSWindowDelegate {
         description: "Needed to focus windows after you release the shortcut.",
         buttonTitle: "Open Accessibility Settings"
     )
+    private let screenRecordingCard = PermissionCardView(
+        title: "Screen Recording",
+        description: "Needed to read visible windows and build the switcher list.",
+        buttonTitle: "Open Screen Recording Settings"
+    )
     private let cardsStack = NSStackView()
     private var accessibilityCardWidthConstraint: NSLayoutConstraint?
+    private var screenRecordingCardWidthConstraint: NSLayoutConstraint?
 
     private var onContinue: (() -> Void)?
     private var didContinue = false
@@ -193,6 +199,7 @@ final class PermissionsWindowController: NSWindowController, NSWindowDelegate {
         window.contentView = buildContentView()
 
         accessibilityCard.setButtonTarget(self, action: #selector(openAccessibilitySettings))
+        screenRecordingCard.setButtonTarget(self, action: #selector(openScreenRecordingSettings))
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(refreshStatus),
@@ -213,13 +220,11 @@ final class PermissionsWindowController: NSWindowController, NSWindowDelegate {
 
     func presentIfNeeded(onContinue: @escaping () -> Void) -> Bool {
         let snapshot = AccessibilityService.shared.currentPermissionSnapshot()
-        let shortcut = AppSettings.shared.switcherShortcut
-        guard !snapshot.corePermissionsGranted(for: shortcut) else {
+        guard !(snapshot.accessibilityGranted && snapshot.screenRecordingGranted) else {
             return false
         }
-        if shortcut.requiresInputMonitoring && !snapshot.inputMonitoringGranted {
-            _ = AccessibilityService.shared.requestInputMonitoringPermission()
-            AccessibilityService.shared.openInputMonitoringSettings()
+        if !snapshot.screenRecordingGranted {
+            _ = AccessibilityService.shared.requestScreenRecordingPermission()
         }
 
         self.onContinue = onContinue
@@ -265,6 +270,7 @@ final class PermissionsWindowController: NSWindowController, NSWindowDelegate {
         cardsStack.spacing = 14
         cardsStack.translatesAutoresizingMaskIntoConstraints = false
         cardsStack.addArrangedSubview(accessibilityCard)
+        cardsStack.addArrangedSubview(screenRecordingCard)
 
         root.addSubview(header)
         root.addSubview(subtitle)
@@ -291,13 +297,15 @@ final class PermissionsWindowController: NSWindowController, NSWindowDelegate {
         accessibilityCardWidthConstraint = accessibilityCard.widthAnchor.constraint(
             equalTo: cardsStack.widthAnchor)
         accessibilityCardWidthConstraint?.isActive = true
+        screenRecordingCardWidthConstraint = screenRecordingCard.widthAnchor.constraint(
+            equalTo: cardsStack.widthAnchor)
+        screenRecordingCardWidthConstraint?.isActive = true
 
         return root
     }
 
     @objc private func refreshStatus() {
         let snapshot = AccessibilityService.shared.currentPermissionSnapshot()
-        let shortcut = AppSettings.shared.switcherShortcut
         accessibilityCard.configure(
             icon: NSImage(systemSymbolName: "accessibility", accessibilityDescription: nil),
             iconTint: .systemBlue,
@@ -305,7 +313,14 @@ final class PermissionsWindowController: NSWindowController, NSWindowDelegate {
             granted: snapshot.accessibilityGranted,
             required: true
         )
-        if snapshot.corePermissionsGranted(for: shortcut) && !didContinue {
+        screenRecordingCard.configure(
+            icon: NSImage(systemSymbolName: "display", accessibilityDescription: nil),
+            iconTint: .systemPurple,
+            iconBackground: NSColor.systemPurple.withAlphaComponent(0.14),
+            granted: snapshot.screenRecordingGranted,
+            required: true
+        )
+        if snapshot.accessibilityGranted && snapshot.screenRecordingGranted && !didContinue {
             didContinue = true
             window?.orderOut(nil)
             NSApp.setActivationPolicy(.accessory)
@@ -317,12 +332,17 @@ final class PermissionsWindowController: NSWindowController, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         guard !didContinue else { return }
         let snapshot = AccessibilityService.shared.currentPermissionSnapshot()
-        if !snapshot.corePermissionsGranted(for: AppSettings.shared.switcherShortcut) {
+        if !(snapshot.accessibilityGranted && snapshot.screenRecordingGranted) {
             NSApp.terminate(nil)
         }
     }
 
     @objc private func openAccessibilitySettings() {
         AccessibilityService.shared.openAccessibilitySettings()
+    }
+
+    @objc private func openScreenRecordingSettings() {
+        _ = AccessibilityService.shared.requestScreenRecordingPermission()
+        AccessibilityService.shared.openScreenRecordingSettings()
     }
 }

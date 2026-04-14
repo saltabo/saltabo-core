@@ -18,11 +18,10 @@ final class AccessibilityService {
 
     struct PermissionSnapshot {
         let accessibilityGranted: Bool
-        let inputMonitoringGranted: Bool
         let screenRecordingGranted: Bool
 
-        func corePermissionsGranted(for shortcut: SwitcherShortcut) -> Bool {
-            accessibilityGranted && (!shortcut.requiresInputMonitoring || inputMonitoringGranted)
+        func corePermissionsGranted(for _: SwitcherShortcut) -> Bool {
+            accessibilityGranted
         }
 
         func allGranted(for shortcut: SwitcherShortcut) -> Bool {
@@ -35,7 +34,6 @@ final class AccessibilityService {
     func currentPermissionSnapshot() -> PermissionSnapshot {
         PermissionSnapshot(
             accessibilityGranted: AXIsProcessTrusted(),
-            inputMonitoringGranted: CGPreflightListenEventAccess(),
             screenRecordingGranted: CGPreflightScreenCaptureAccess()
         )
     }
@@ -52,20 +50,11 @@ final class AccessibilityService {
 
     @discardableResult
     func requestScreenRecordingPermission() -> Bool {
-        CGPreflightScreenCaptureAccess()
-    }
-
-    @discardableResult
-    func requestInputMonitoringPermission() -> Bool {
-        CGRequestListenEventAccess()
+        CGRequestScreenCaptureAccess()
     }
 
     func openAccessibilitySettings() {
         openSystemSettings("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
-    }
-
-    func openInputMonitoringSettings() {
-        openSystemSettings("x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")
     }
 
     func openScreenRecordingSettings() {
