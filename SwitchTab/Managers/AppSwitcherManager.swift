@@ -12,6 +12,10 @@ final class AppSwitcherManager {
     private var items: [SwitcherApp] = []
     private var selectedIndex = 0
     private var cycleOrder: [pid_t] = []
+    /// After keyboard-driven selection, ignore hover until the user actually moves the mouse
+    /// (rebuilds re-deliver `mouseEntered` for the view under the cursor and would snap selection).
+    private var suppressHoverSelection = false
+    private var mouseMoveMonitor: Any?
 
     private init() {
         NotificationCenter.default.addObserver(
@@ -121,16 +125,40 @@ final class AppSwitcherManager {
             SettingsWindowController.shared.suppressForSwitcherIfVisible()
             ThumbnailCache.shared.warm(items.flatMap(\.windows), targetSize: NSSize(width: 236, height: 132))
             selectedIndex = nextSelectionIndex(in: items, reverse: reverse)
-            floatingWindow.show(items: items, selectedIndex: selectedIndex)
+            // Menu-driven open: allow hover. Shortcut-driven open: keyboard owns selection until mouse moves.
+            suppressHoverSelection = !explicitOpen
+            floatingWindow.show(
+                items: items,
+                selectedIndex: selectedIndex,
+                onHoverIndex: { [weak self] index in
+                    self?.selectByHover(index: index)
+                },
+                onActivateIndex: { [weak self] index in
+                    self?.activateByClick(index: index)
+                }
+            )
+            installMouseMoveMonitorIfNeeded()
             return
         }
 
         let delta = reverse ? -1 : 1
         selectedIndex = (selectedIndex + delta + items.count) % items.count
-        floatingWindow.update(items: items, selectedIndex: selectedIndex)
+        suppressHoverSelection = true
+        floatingWindow.update(
+            items: items,
+            selectedIndex: selectedIndex,
+            onHoverIndex: { [weak self] index in
+                self?.selectByHover(index: index)
+            },
+            onActivateIndex: { [weak self] index in
+                self?.activateByClick(index: index)
+            }
+        )
+        installMouseMoveMonitorIfNeeded()
     }
 
     private func commitSelection() {
+        removeMouseMoveMonitor()
         defer {
             items = []
             selectedIndex = 0
@@ -143,6 +171,7 @@ final class AppSwitcherManager {
     }
 
     private func cancel() {
+        removeMouseMoveMonitor()
         items = []
         selectedIndex = 0
         floatingWindow.hide()
@@ -174,5 +203,46 @@ final class AppSwitcherManager {
 
     private func activeScreen() -> NSScreen? {
         NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
+    }
+
+    private func selectByHover(index: Int) {
+        guard !suppressHoverSelection else { return }
+        guard items.indices.contains(index) else { return }
+        guard selectedIndex != index else { return }
+        selectedIndex = index
+        floatingWindow.update(
+            items: items,
+            selectedIndex: selectedIndex,
+            onHoverIndex: { [weak self] hoveredIndex in
+                self?.selectByHover(index: hoveredIndex)
+            },
+            onActivateIndex: { [weak self] activatedIndex in
+                self?.activateByClick(index: activatedIndex)
+            }
+        )
+    }
+
+    private func activateByClick(index: Int) {
+        guard items.indices.contains(index) else { return }
+        selectedIndex = index
+        commitSelection()
+    }
+
+    private func installMouseMoveMonitorIfNeeded() {
+        guard mouseMoveMonitor == nil else { return }
+        mouseMoveMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
+        ) { [weak self] event in
+            self?.suppressHoverSelection = false
+            return event
+        }
+    }
+
+    private func removeMouseMoveMonitor() {
+        if let mouseMoveMonitor {
+            NSEvent.removeMonitor(mouseMoveMonitor)
+            self.mouseMoveMonitor = nil
+        }
+        suppressHoverSelection = false
     }
 }

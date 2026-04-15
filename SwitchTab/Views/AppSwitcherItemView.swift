@@ -1,6 +1,9 @@
 import AppKit
 
 final class AppSwitcherItemView: NSView {
+    var onHover: (() -> Void)?
+    var onActivate: (() -> Void)?
+
     private enum Metrics {
         static let itemSize = NSSize(width: 236, height: 164)
         static let contentInset: CGFloat = 8
@@ -23,6 +26,7 @@ final class AppSwitcherItemView: NSView {
     private let placeholderView = NSView()
     private let placeholderIconWellView = NSView()
     private let placeholderIconView = NSImageView()
+    private var trackingAreaRef: NSTrackingArea?
 
     override init(frame frameRect: NSRect) {
         super.init(frame: NSRect(origin: .zero, size: Metrics.itemSize))
@@ -122,6 +126,41 @@ final class AppSwitcherItemView: NSView {
             height: iconWellSize
         )
         placeholderIconView.frame = NSRect(x: 8, y: 8, width: 28, height: 28)
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        // `point` is in the superview's coordinate system; `bounds` is local.
+        guard let superview else { return super.hitTest(point) }
+        let localPoint = convert(point, from: superview)
+        return bounds.contains(localPoint) ? self : nil
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let trackingAreaRef {
+            removeTrackingArea(trackingAreaRef)
+        }
+
+        let tracking = NSTrackingArea(
+            rect: bounds,
+            options: [.activeAlways, .mouseEnteredAndExited, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(tracking)
+        trackingAreaRef = tracking
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        onHover?()
+    }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        onActivate?()
     }
 
     func configure(with item: SwitcherApp, selected: Bool) {

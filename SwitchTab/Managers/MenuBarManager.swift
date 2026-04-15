@@ -16,11 +16,14 @@ final class MenuBarManager: NSObject {
         item.button?.toolTip = "SwitchTab"
 
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "About SwitchTab", action: #selector(openAbout), keyEquivalent: ""))
+        menu.addItem(
+            NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ","))
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ","))
-        menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Quit SwitchTab", action: #selector(quit), keyEquivalent: "q"))
+        menu.addItem(
+            NSMenuItem(title: "About SwitchTab...", action: #selector(openAbout), keyEquivalent: "")
+        )
+        menu.addItem(
+            NSMenuItem(title: "Quit SwitchTab", action: #selector(quit), keyEquivalent: "q"))
         menu.items.forEach { $0.target = self }
 
         item.menu = menu
@@ -40,7 +43,8 @@ final class MenuBarManager: NSObject {
     @objc private func openAbout() {
         NSApp.activate(ignoringOtherApps: true)
         let shortVersion =
-            Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0.0"
+            Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+            ?? "1.0.0"
         let buildVersion =
             Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
         NSApp.orderFrontStandardAboutPanel(options: [

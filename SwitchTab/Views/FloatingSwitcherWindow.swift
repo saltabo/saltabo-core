@@ -71,7 +71,7 @@ final class FloatingSwitcherWindow {
 
         let panelSize = panelSize(for: items.count)
         layoutChrome(panelSize: panelSize)
-        rebuild(items: items, selectedIndex: selectedIndex)
+        rebuild(items: items, selectedIndex: selectedIndex, onHoverIndex: nil, onActivateIndex: nil)
 
         guard let screen = screenForPresentation() else { return }
         let frame = NSRect(
@@ -96,7 +96,61 @@ final class FloatingSwitcherWindow {
         guard !items.isEmpty else { return }
         let panelSize = panelSize(for: items.count)
         layoutChrome(panelSize: panelSize)
-        rebuild(items: items, selectedIndex: selectedIndex)
+        rebuild(items: items, selectedIndex: selectedIndex, onHoverIndex: nil, onActivateIndex: nil)
+        panel.displayIfNeeded()
+    }
+
+    func show(
+        items: [SwitcherApp],
+        selectedIndex: Int,
+        onHoverIndex: @escaping (Int) -> Void,
+        onActivateIndex: @escaping (Int) -> Void
+    ) {
+        guard !items.isEmpty else { return }
+
+        let panelSize = panelSize(for: items.count)
+        layoutChrome(panelSize: panelSize)
+        rebuild(
+            items: items,
+            selectedIndex: selectedIndex,
+            onHoverIndex: onHoverIndex,
+            onActivateIndex: onActivateIndex
+        )
+
+        guard let screen = screenForPresentation() else { return }
+        let frame = NSRect(
+            x: screen.visibleFrame.midX - panelSize.width / 2,
+            y: screen.visibleFrame.midY - panelSize.height / 2,
+            width: panelSize.width,
+            height: panelSize.height
+        )
+
+        panel.setFrame(frame, display: false)
+        panel.alphaValue = 0
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.12
+            panel.animator().alphaValue = 1
+        }
+    }
+
+    func update(
+        items: [SwitcherApp],
+        selectedIndex: Int,
+        onHoverIndex: @escaping (Int) -> Void,
+        onActivateIndex: @escaping (Int) -> Void
+    ) {
+        guard !items.isEmpty else { return }
+        let panelSize = panelSize(for: items.count)
+        layoutChrome(panelSize: panelSize)
+        rebuild(
+            items: items,
+            selectedIndex: selectedIndex,
+            onHoverIndex: onHoverIndex,
+            onActivateIndex: onActivateIndex
+        )
         panel.displayIfNeeded()
     }
 
@@ -111,7 +165,12 @@ final class FloatingSwitcherWindow {
             })
     }
 
-    private func rebuild(items: [SwitcherApp], selectedIndex: Int) {
+    private func rebuild(
+        items: [SwitcherApp],
+        selectedIndex: Int,
+        onHoverIndex: ((Int) -> Void)?,
+        onActivateIndex: ((Int) -> Void)?
+    ) {
         backgroundCardView.subviews
             .filter { $0 !== blurView && $0 !== tintView }
             .forEach { $0.removeFromSuperview() }
@@ -122,6 +181,12 @@ final class FloatingSwitcherWindow {
         for (index, item) in items.enumerated() {
             let view = AppSwitcherItemView(frame: NSRect(origin: .zero, size: Metrics.itemSize))
             view.configure(with: item, selected: index == selectedIndex)
+            view.onHover = {
+                onHoverIndex?(index)
+            }
+            view.onActivate = {
+                onActivateIndex?(index)
+            }
             view.frame = NSRect(origin: NSPoint(x: originX, y: originY), size: Metrics.itemSize)
             backgroundCardView.addSubview(view)
             originX += Metrics.itemSize.width + Metrics.itemSpacing
