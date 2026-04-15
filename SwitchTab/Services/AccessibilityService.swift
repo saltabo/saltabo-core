@@ -168,26 +168,57 @@ final class AccessibilityService {
     }
 
     func raiseWindow(matching descriptor: WindowDescriptor) -> Bool {
-        for window in windows(for: descriptor.pid) {
+        let candidates = windows(for: descriptor.pid).compactMap { window -> (AXUIElement, CGFloat)? in
             let title = stringValue(for: kAXTitleAttribute, on: window) ?? ""
             let frame = frame(for: window) ?? .zero
-
-            let sameTitle = descriptor.title.isEmpty || title == descriptor.title
-            let sameFrame =
-                abs(frame.origin.x - descriptor.bounds.origin.x) < 2
-                && abs(frame.origin.y - descriptor.bounds.origin.y) < 2
-
-            guard sameTitle || sameFrame else { continue }
-
-            _ = AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
-            _ = AXUIElementSetAttributeValue(
-                window, kAXFocusedAttribute as CFString, kCFBooleanTrue)
-            _ = AXUIElementSetAttributeValue(
-                window, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
-            return AXUIElementPerformAction(window, kAXRaiseAction as CFString) == .success
+            let score = windowMatchScore(title: title, frame: frame, descriptor: descriptor)
+            return score > 0 ? (window, score) : nil
         }
 
-        return false
+        guard let bestWindow = candidates.max(by: { $0.1 < $1.1 })?.0 else {
+            return false
+        }
+
+        _ = AXUIElementSetAttributeValue(bestWindow, kAXMainAttribute as CFString, kCFBooleanTrue)
+        _ = AXUIElementSetAttributeValue(
+            bestWindow, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+        _ = AXUIElementSetAttributeValue(
+            bestWindow, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
+        return AXUIElementPerformAction(bestWindow, kAXRaiseAction as CFString) == .success
+    }
+
+    private func windowMatchScore(title: String, frame: CGRect, descriptor: WindowDescriptor) -> CGFloat {
+        let normalizedDescriptorTitle = descriptor.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let sameOrigin =
+            abs(frame.origin.x - descriptor.bounds.origin.x) < 2
+            && abs(frame.origin.y - descriptor.bounds.origin.y) < 2
+        let sameSize =
+            abs(frame.width - descriptor.bounds.width) < 2
+            && abs(frame.height - descriptor.bounds.height) < 2
+
+        var score: CGFloat = 0
+
+        if !normalizedDescriptorTitle.isEmpty {
+            if normalizedTitle == normalizedDescriptorTitle {
+                score += 10
+            } else if normalizedTitle.localizedCaseInsensitiveContains(normalizedDescriptorTitle)
+                || normalizedDescriptorTitle.localizedCaseInsensitiveContains(normalizedTitle)
+            {
+                score += 5
+            }
+        }
+
+        if sameOrigin {
+            score += 3
+        }
+
+        if sameSize {
+            score += 2
+        }
+
+        return score
     }
 
     func browserTabTitles(for pid: pid_t) -> [String] {

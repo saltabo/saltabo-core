@@ -71,6 +71,7 @@ final class PreviewPanelWindow {
 
         let panelSize = panelSize(for: displayedWindows.count)
         layoutChrome(panelSize: panelSize)
+        rootView.layoutSubtreeIfNeeded()
         rebuild(windows: displayedWindows, activate: activate)
         positionPanel(anchorPoint: anchorPoint, panelSize: panelSize)
 
@@ -107,13 +108,16 @@ final class PreviewPanelWindow {
         windows: [WindowDescriptor], activate: @escaping (WindowDescriptor) -> Void
     ) {
         backgroundCardView.subviews.filter { $0 !== blurView }.forEach { $0.removeFromSuperview() }
+        backgroundCardView.layoutSubtreeIfNeeded()
 
-        let contentWidth =
-            CGFloat(windows.count) * Metrics.itemSize.width
+        let contentHeight =
+            CGFloat(windows.count) * Metrics.itemSize.height
             + CGFloat(max(windows.count - 1, 0)) * Metrics.itemSpacing
-        let originXStart = (backgroundCardView.bounds.width - contentWidth) / 2
-        let originY = (backgroundCardView.bounds.height - Metrics.itemSize.height) / 2
-        var originX = originXStart
+        let originX = (backgroundCardView.bounds.width - Metrics.itemSize.width) / 2
+        var originY =
+            backgroundCardView.bounds.height
+            - ((backgroundCardView.bounds.height - contentHeight) / 2)
+            - Metrics.itemSize.height
 
         for window in windows {
             let previewView = PreviewThumbnailItemView(
@@ -127,11 +131,11 @@ final class PreviewPanelWindow {
                 with: window,
                 image: thumbnail
             )
-            previewView.onActivate = {
+            previewView.onActivate = { [window] in
                 activate(window)
             }
             backgroundCardView.addSubview(previewView)
-            originX += Metrics.itemSize.width + Metrics.itemSpacing
+            originY -= Metrics.itemSize.height + Metrics.itemSpacing
         }
     }
 
@@ -145,13 +149,13 @@ final class PreviewPanelWindow {
     private func panelSize(for itemCount: Int) -> NSSize {
         let width =
             Metrics.contentPadding * 2
-            + CGFloat(itemCount) * Metrics.itemSize.width
-            + CGFloat(max(itemCount - 1, 0)) * Metrics.itemSpacing
+            + Metrics.itemSize.width
             + Metrics.panelInset * 2
 
         let height =
             Metrics.contentPadding * 2
-            + Metrics.itemSize.height
+            + CGFloat(itemCount) * Metrics.itemSize.height
+            + CGFloat(max(itemCount - 1, 0)) * Metrics.itemSpacing
             + Metrics.panelInset * 2
 
         return NSSize(width: width, height: height)
