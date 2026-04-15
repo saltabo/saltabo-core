@@ -75,7 +75,9 @@ final class PreviewThumbnailItemView: NSView {
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        bounds.contains(point) ? self : nil
+        guard let superview else { return super.hitTest(point) }
+        let localPoint = convert(point, from: superview)
+        return bounds.contains(localPoint) ? self : nil
     }
 
     override func updateTrackingAreas() {
