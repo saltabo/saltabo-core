@@ -105,11 +105,11 @@ More detail: [Publishing an update](https://sparkle-project.org/documentation/pu
 
 ### GitHub Actions (publish to `saltabo.github.io`)
 
-Workflow: [`.github/workflows/publish-pages.yml`](.github/workflows/publish-pages.yml). It runs when you **publish a GitHub Release** (not draft):
+Workflow: [`.github/workflows/publish-pages.yml`](.github/workflows/publish-pages.yml). It runs when you **push a tag** matching `v*`:
 
-1. Builds `Saltabo.app` (Release), zips with `ditto`, uploads **`Saltabo.zip`** to that release on **this** repository.
+1. Builds `Saltabo.app` (Release), zips with `ditto`, creates/updates release `vX.Y.Z` on `saltabo/saltabo.github.io`, uploads **`Saltabo.zip`** there.
 2. Downloads Sparkle, runs `scripts/generate-appcast.sh` so `<enclosure url>` matches  
-   `https://github.com/<owner>/<this-repo>/releases/download/<tag>/Saltabo.zip`.
+   `https://github.com/<owner>/<owner>.github.io/releases/download/<tag>/Saltabo.zip`.
 3. Commits **`appcast.xml`** to the Pages repository (by default `<github-owner>/<github-owner>.github.io`, e.g. `saltabo/saltabo.github.io`) on that repo’s default branch.
 
 **Secrets** (repo → *Settings → Secrets and variables → Actions*):

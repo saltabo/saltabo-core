@@ -100,7 +100,6 @@ final class UpdateChecker: NSObject {
 
 private final class AppcastParser: NSObject, XMLParserDelegate {
     private var isInsideItem = false
-    private var currentElement = ""
     private var latestVersion: String?
     private var captureBuffer = ""
 
@@ -114,18 +113,20 @@ private final class AppcastParser: NSObject, XMLParserDelegate {
 
     func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?,
                 qualifiedName qName: String?, attributes attributeDict: [String: String] = [:]) {
-        currentElement = elementName
         captureBuffer = ""
+        let resolvedName = qName ?? elementName
 
-        if elementName == "item" {
+        if resolvedName == "item" {
             isInsideItem = true
         }
 
-        guard isInsideItem, elementName == "enclosure" else { return }
+        guard isInsideItem, resolvedName == "enclosure" else { return }
         if latestVersion == nil {
             latestVersion =
                 attributeDict["sparkle:shortVersionString"]
                 ?? attributeDict["sparkle:version"]
+                ?? attributeDict["shortVersionString"]
+                ?? attributeDict["version"]
         }
     }
 
@@ -135,21 +136,21 @@ private final class AppcastParser: NSObject, XMLParserDelegate {
 
     func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?,
                 qualifiedName qName: String?) {
-        if isInsideItem, latestVersion == nil, elementName == "sparkle:shortVersionString" {
+        let resolvedName = qName ?? elementName
+
+        if isInsideItem, latestVersion == nil,
+            (resolvedName == "sparkle:shortVersionString" || resolvedName == "shortVersionString")
+        {
             let value = captureBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
             if !value.isEmpty {
                 latestVersion = value
             }
         }
 
-        if elementName == "item" {
+        if resolvedName == "item" {
             isInsideItem = false
-            if latestVersion != nil {
-                parser.abortParsing()
-            }
         }
 
-        currentElement = ""
         captureBuffer = ""
     }
 }

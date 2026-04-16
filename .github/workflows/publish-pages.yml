@@ -1,6 +1,6 @@
 # Publishes updates to the org/user GitHub Pages repo (e.g. saltabo/saltabo.github.io):
 # 1) Build Saltabo.app, zip with ditto
-# 2) Create/find GitHub Release for the tag and upload Saltabo.zip
+# 2) Create/find GitHub Release for the tag and upload Saltabo.zip to the public distribution repo
 # 3) Run Sparkle generate_appcast (signed with EdDSA)
 # 4) Push appcast.xml to the Pages repo (https://<owner>.github.io/appcast.xml)
 #
@@ -29,6 +29,8 @@ env:
   PRODUCT_NAME: Saltabo
   # Public site repo: https://<owner>.github.io/appcast.xml — e.g. saltabo/saltabo.github.io
   PAGES_REPOSITORY: ${{ format('{0}/{0}.github.io', github.repository_owner) }}
+  # Release assets are uploaded to this repository and referenced by appcast.
+  DIST_REPOSITORY: ${{ format('{0}/{0}.github.io', github.repository_owner) }}
 
 jobs:
   publish:
@@ -61,28 +63,28 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent "$APP" "${PRODUCT_NAME}.zip"
           ls -la "${PRODUCT_NAME}.zip"
 
-      - name: Create release from tag (if missing)
-        if: github.event_name == 'push'
+      - name: Create or update release in distribution repo
         env:
-          GH_TOKEN: ${{ github.token }}
+          TOKEN: ${{ secrets.PAGES_DEPLOY_TOKEN }}
+          DIST_REPOSITORY: ${{ env.DIST_REPOSITORY }}
         run: |
           set -euo pipefail
-          if gh release view "${{ github.ref_name }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            echo "Release ${{ github.ref_name }} already exists."
+          test -n "${TOKEN:-}" || { echo "Missing secret PAGES_DEPLOY_TOKEN"; exit 1; }
+          CLEAN_TOKEN="$(printf '%s' "$TOKEN" | tr -d '\r\n[:space:]')"
+          test -n "${CLEAN_TOKEN:-}" || { echo "PAGES_DEPLOY_TOKEN is empty after trimming whitespace"; exit 1; }
+
+          if GH_TOKEN="${CLEAN_TOKEN}" gh release view "${{ github.ref_name }}" --repo "${DIST_REPOSITORY}" >/dev/null 2>&1; then
+            echo "Release ${{ github.ref_name }} already exists in ${DIST_REPOSITORY}."
           else
-            gh release create "${{ github.ref_name }}" \
-              --repo "${{ github.repository }}" \
-              --target "${{ github.sha }}" \
+            GH_TOKEN="${CLEAN_TOKEN}" gh release create "${{ github.ref_name }}" \
+              --repo "${DIST_REPOSITORY}" \
               --title "${{ github.ref_name }}" \
               --generate-notes
           fi
 
-      - name: Upload zip to this release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          gh release upload "${{ github.ref_name }}" "${PRODUCT_NAME}.zip" --clobber --repo "${{ github.repository }}"
+          GH_TOKEN="${CLEAN_TOKEN}" gh release upload "${{ github.ref_name }}" "${PRODUCT_NAME}.zip" \
+            --clobber \
+            --repo "${DIST_REPOSITORY}"
 
       - name: Install Sparkle generate_appcast
         run: |
@@ -105,11 +107,12 @@ jobs:
       - name: Generate appcast.xml
         env:
           SPARKLE_EDDSA_KEY_FILE: ${{ runner.temp }}/sparkle_eddsa.key
-          GITHUB_OWNER: ${{ github.repository_owner }}
-          GITHUB_REPO: ${{ github.event.repository.name }}
+          DIST_REPOSITORY: ${{ env.DIST_REPOSITORY }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
+          export GITHUB_OWNER="${DIST_REPOSITORY%%/*}"
+          export GITHUB_REPO="${DIST_REPOSITORY#*/}"
           chmod +x ./scripts/generate-appcast.sh
           ./scripts/generate-appcast.sh "${PRODUCT_NAME}.zip" -o appcast.xml
 
