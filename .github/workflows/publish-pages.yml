@@ -1,0 +1,119 @@
+# Publishes each GitHub Release to the org/user GitHub Pages repo (e.g. saltabo/saltabo.github.io):
+# 1) Build Saltabo.app, zip with ditto
+# 2) Upload Saltabo.zip to THIS repo's release (same tag)
+# 3) Run Sparkle generate_appcast (signed with EdDSA)
+# 4) Push appcast.xml to the Pages repo (https://<owner>.github.io/appcast.xml)
+#
+# Required repository secrets:
+#   SPARKLE_EDDSA_PRIVATE_KEY — contents of the private key file from Sparkle's generate_keys
+#   PAGES_DEPLOY_TOKEN        — fine-grained PAT with Contents: Read and write on <owner>/<owner>.github.io
+#
+# To use a Pages repo that is not `<owner>/<owner>.github.io`, edit env PAGES_REPOSITORY below.
+
+name: Publish release to Pages
+
+on:
+  release:
+    types: [published]
+
+concurrency:
+  group: publish-pages-${{ github.repository }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  SPARKLE_VERSION: "2.9.1"
+  PRODUCT_NAME: Saltabo
+  # Public site repo: https://<owner>.github.io/appcast.xml — e.g. saltabo/saltabo.github.io
+  PAGES_REPOSITORY: ${{ format('{0}/{0}.github.io', github.repository_owner) }}
+
+jobs:
+  publish:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Build Release
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project "${PRODUCT_NAME}.xcodeproj" \
+            -scheme "${PRODUCT_NAME}" \
+            -configuration Release \
+            -derivedDataPath "${{ runner.temp }}/dd" \
+            -destination "generic/platform=macOS" \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            build
+
+      - name: Create archive (zip)
+        id: zip
+        run: |
+          set -euo pipefail
+          APP="${{ runner.temp }}/dd/Build/Products/Release/${PRODUCT_NAME}.app"
+          test -d "$APP"
+          ditto -c -k --sequesterRsrc --keepParent "$APP" "${PRODUCT_NAME}.zip"
+          ls -la "${PRODUCT_NAME}.zip"
+
+      - name: Upload zip to this release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release upload "${{ github.ref_name }}" "${PRODUCT_NAME}.zip" --clobber --repo "${{ github.repository }}"
+
+      - name: Install Sparkle generate_appcast
+        run: |
+          set -euo pipefail
+          curl -fsSL -o sparkle.tar.xz \
+            "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz"
+          tar -xf sparkle.tar.xz
+          echo "SPARKLE_BIN=${{ github.workspace }}/Sparkle-${SPARKLE_VERSION}/bin/generate_appcast" >> "$GITHUB_ENV"
+
+      - name: Write Sparkle private key
+        env:
+          KEY: ${{ secrets.SPARKLE_EDDSA_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${KEY:-}" || { echo "Missing secret SPARKLE_EDDSA_PRIVATE_KEY"; exit 1; }
+          printf '%s\n' "$KEY" > "${{ runner.temp }}/sparkle_eddsa.key"
+          chmod 600 "${{ runner.temp }}/sparkle_eddsa.key"
+
+      - name: Generate appcast.xml
+        env:
+          SPARKLE_EDDSA_KEY_FILE: ${{ runner.temp }}/sparkle_eddsa.key
+          GITHUB_OWNER: ${{ github.repository_owner }}
+          GITHUB_REPO: ${{ github.event.repository.name }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          chmod +x ./scripts/generate-appcast.sh
+          ./scripts/generate-appcast.sh "${PRODUCT_NAME}.zip" -o appcast.xml
+
+      - name: Push appcast to Pages repository
+        env:
+          TOKEN: ${{ secrets.PAGES_DEPLOY_TOKEN }}
+          PAGES_REPOSITORY: ${{ env.PAGES_REPOSITORY }}
+        run: |
+          set -euo pipefail
+          test -n "${TOKEN:-}" || { echo "Missing secret PAGES_DEPLOY_TOKEN"; exit 1; }
+
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+          git clone --depth 1 "https://x-access-token:${TOKEN}@github.com/${PAGES_REPOSITORY}.git" pages-repo
+          cp -f appcast.xml pages-repo/appcast.xml
+          cd pages-repo
+          git add appcast.xml
+          if git diff --staged --quiet; then
+            echo "No appcast changes."
+          else
+            git commit -m "appcast: ${{ github.repository }} ${{ github.ref_name }}"
+            DEFAULT_BRANCH="$(GH_TOKEN="${TOKEN}" gh api "repos/${PAGES_REPOSITORY}" --jq .default_branch)"
+            git push "https://x-access-token:${TOKEN}@github.com/${PAGES_REPOSITORY}.git" "HEAD:refs/heads/${DEFAULT_BRANCH}"
+          fi
