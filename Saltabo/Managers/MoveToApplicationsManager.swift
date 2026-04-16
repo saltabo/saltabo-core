@@ -124,9 +124,9 @@ final class MoveToApplicationsManager {
     private func presentMoveError(_ error: Error, destinationURL: URL) {
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "Couldn't move SwitchTab"
+        alert.messageText = "Couldn't move Saltabo"
         alert.informativeText = """
-            SwitchTab couldn't move itself to:
+            Saltabo couldn't move itself to:
             \(destinationURL.path)
 
             \(error.localizedDescription)

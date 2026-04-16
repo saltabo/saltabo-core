@@ -192,7 +192,7 @@ final class PermissionsWindowController: NSWindowController, NSWindowDelegate {
 
         super.init(window: window)
 
-        window.title = "SwitchTab needs permissions"
+        window.title = "Saltabo needs permissions"
         window.center()
         window.isReleasedWhenClosed = false
         window.delegate = self
@@ -246,13 +246,13 @@ final class PermissionsWindowController: NSWindowController, NSWindowDelegate {
         iconView.translatesAutoresizingMaskIntoConstraints = false
         iconView.imageScaling = .scaleProportionallyUpOrDown
 
-        let title = NSTextField(labelWithString: "SwitchTab needs some permissions")
+        let title = NSTextField(labelWithString: "Saltabo needs some permissions")
         title.font = .systemFont(ofSize: 16, weight: .bold)
         title.translatesAutoresizingMaskIntoConstraints = false
 
         let subtitle = NSTextField(
             wrappingLabelWithString:
-                "Enable the required permission below before SwitchTab starts listening for keyboard shortcuts."
+                "Enable the required permission below before Saltabo starts listening for keyboard shortcuts."
         )
         subtitle.font = .systemFont(ofSize: 12)
         subtitle.textColor = .secondaryLabelColor

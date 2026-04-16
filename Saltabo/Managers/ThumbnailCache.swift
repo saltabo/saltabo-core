@@ -5,7 +5,7 @@ final class ThumbnailCache {
     static let shared = ThumbnailCache()
 
     private let cache = NSCache<NSString, NSImage>()
-    private let queue = DispatchQueue(label: "switchtab.thumbnail-cache", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "Saltabo.thumbnail-cache", qos: .userInitiated)
 
     private init() {}
 

@@ -171,7 +171,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         container.addArrangedSubview(permissionsStack)
         container.addArrangedSubview(
             makeSectionNote(
-                "SwitchTab needs Accessibility and Screen Recording."
+                "Saltabo needs Accessibility and Screen Recording."
             ))
 
         rootView.addSubview(container)

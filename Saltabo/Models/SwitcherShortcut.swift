@@ -49,17 +49,17 @@ enum SwitcherShortcut: String, CaseIterable {
 }
 
 extension Notification.Name {
-    static let switcherShortcutDidChange = Notification.Name("SwitchTab.switcherShortcutDidChange")
+    static let switcherShortcutDidChange = Notification.Name("Saltabo.switcherShortcutDidChange")
     static let switcherAvailabilityDidChange = Notification.Name(
-        "SwitchTab.switcherAvailabilityDidChange")
+        "Saltabo.switcherAvailabilityDidChange")
 }
 
 final class AppSettings {
     static let shared = AppSettings()
 
     private enum Keys {
-        static let switcherShortcut = "switchtab.switcherShortcut"
-        static let suppressMoveToApplicationsPrompt = "switchtab.suppressMoveToApplicationsPrompt"
+        static let switcherShortcut = "Saltabo.switcherShortcut"
+        static let suppressMoveToApplicationsPrompt = "Saltabo.suppressMoveToApplicationsPrompt"
     }
 
     private let defaults = UserDefaults.standard

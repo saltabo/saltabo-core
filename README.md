@@ -1,11 +1,11 @@
-# SwitchTab
+# Saltabo
 
 Production-style macOS utility that replaces default app switching with a Space-aware switcher and adds Dock hover previews using AppKit.
 
 ## Setup
 
-1. Open `SwitchTab.xcodeproj` in Xcode.
-2. Run the `SwitchTab` target.
+1. Open `Saltabo.xcodeproj` in Xcode.
+2. Run the `Saltabo` target.
 3. On first launch, grant:
    - `Accessibility`
    - `Input Monitoring`
@@ -38,3 +38,38 @@ Production-style macOS utility that replaces default app switching with a Space-
 - If Dock hit-testing cannot map the hovered icon to a running app, the preview panel stays hidden instead of guessing.
 - If exact AX window raise fails, the app falls back to activating the owning application.
 - If `Command + Tab` interception is blocked by permissions, the app requests permissions and explains the missing access.
+
+## App Updates (Appcast + Check for Updates)
+
+The menu includes **Check for Updates...**. It reads `SUFeedURL` from `Info.plist`,
+fetches an appcast XML, and compares versions.
+
+### 1) Configure `SUFeedURL`
+
+In `Info.plist`, set:
+
+- `SUFeedURL` = `https://<your-username>.github.io/Saltabo/appcast.xml`
+
+Current repo includes a placeholder value you should replace:
+
+- `https://YOUR_GITHUB_USERNAME.github.io/Saltabo/appcast.xml`
+
+### 2) Host `appcast.xml` on GitHub Pages
+
+This repo includes `appcast.xml` at root as a template.
+
+Recommended flow:
+
+1. Create branch `gh-pages` (or use `/docs` on `main`).
+2. Publish Pages from that branch/folder in GitHub Settings.
+3. Ensure `appcast.xml` is reachable at your Pages URL.
+
+### 3) Add a release item
+
+For each release, add a new `<item>` at the top of `appcast.xml`:
+
+- `sparkle:shortVersionString`: user-facing version (e.g. `1.0.1`)
+- `sparkle:version`: monotonically increasing build number (e.g. `101`)
+- `enclosure url`: public URL to your release artifact (e.g. GitHub Release `.zip`)
+
+Then commit + publish updated `appcast.xml`.

@@ -13,17 +13,24 @@ final class MenuBarManager: NSObject {
             item.button?.image = icon
         }
         item.button?.imagePosition = .imageOnly
-        item.button?.toolTip = "SwitchTab"
+        item.button?.toolTip = "Saltabo"
 
         let menu = NSMenu()
+        menu.addItem(
+            NSMenuItem(
+                title: "Check for Updates...",
+                action: #selector(checkForUpdates),
+                keyEquivalent: ""
+            ))
+        menu.addItem(NSMenuItem.separator())
         menu.addItem(
             NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ","))
         menu.addItem(NSMenuItem.separator())
         menu.addItem(
-            NSMenuItem(title: "About SwitchTab...", action: #selector(openAbout), keyEquivalent: "")
+            NSMenuItem(title: "About Saltabo...", action: #selector(openAbout), keyEquivalent: "")
         )
         menu.addItem(
-            NSMenuItem(title: "Quit SwitchTab", action: #selector(quit), keyEquivalent: "q"))
+            NSMenuItem(title: "Quit Saltabo", action: #selector(quit), keyEquivalent: "q"))
         menu.items.forEach { $0.target = self }
 
         item.menu = menu
@@ -51,6 +58,10 @@ final class MenuBarManager: NSObject {
             .applicationVersion: shortVersion,
             .version: "Build \(buildVersion)",
         ])
+    }
+
+    @objc private func checkForUpdates() {
+        UpdateChecker.shared.checkForUpdates()
     }
 
     @objc private func quit() {

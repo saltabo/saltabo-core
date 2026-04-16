@@ -1,7 +1,7 @@
 import AppKit
 
 @main
-final class SwitchTabApp: NSObject, NSApplicationDelegate {
+final class SaltaboApp: NSObject, NSApplicationDelegate {
     private var appSwitcherManager: AppSwitcherManager { .shared }
     private var dockPreviewManager: DockPreviewManager { .shared }
     private var hasStartedServices = false
@@ -11,7 +11,7 @@ final class SwitchTabApp: NSObject, NSApplicationDelegate {
 
     static func main() {
         let app = NSApplication.shared
-        let delegate = SwitchTabApp()
+        let delegate = SaltaboApp()
         app.delegate = delegate
         app.setActivationPolicy(.accessory)
         app.run()
