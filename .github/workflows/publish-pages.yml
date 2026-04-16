@@ -1,6 +1,6 @@
-# Publishes each GitHub Release to the org/user GitHub Pages repo (e.g. saltabo/saltabo.github.io):
+# Publishes updates to the org/user GitHub Pages repo (e.g. saltabo/saltabo.github.io):
 # 1) Build Saltabo.app, zip with ditto
-# 2) Upload Saltabo.zip to THIS repo's release (same tag)
+# 2) Create/find GitHub Release for the tag and upload Saltabo.zip
 # 3) Run Sparkle generate_appcast (signed with EdDSA)
 # 4) Push appcast.xml to the Pages repo (https://<owner>.github.io/appcast.xml)
 #
@@ -13,8 +13,9 @@
 name: Publish release to Pages
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - "v*"
 
 concurrency:
   group: publish-pages-${{ github.repository }}
@@ -60,6 +61,22 @@ jobs:
           ditto -c -k --sequesterRsrc --keepParent "$APP" "${PRODUCT_NAME}.zip"
           ls -la "${PRODUCT_NAME}.zip"
 
+      - name: Create release from tag (if missing)
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if gh release view "${{ github.ref_name }}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release ${{ github.ref_name }} already exists."
+          else
+            gh release create "${{ github.ref_name }}" \
+              --repo "${{ github.repository }}" \
+              --target "${{ github.sha }}" \
+              --title "${{ github.ref_name }}" \
+              --generate-notes
+          fi
+
       - name: Upload zip to this release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -72,8 +89,9 @@ jobs:
           set -euo pipefail
           curl -fsSL -o sparkle.tar.xz \
             "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz"
-          tar -xf sparkle.tar.xz
-          echo "SPARKLE_BIN=${{ github.workspace }}/Sparkle-${SPARKLE_VERSION}/bin/generate_appcast" >> "$GITHUB_ENV"
+          mkdir -p sparkle-tools
+          tar -xf sparkle.tar.xz -C sparkle-tools
+          echo "SPARKLE_BIN=${{ github.workspace }}/sparkle-tools/bin/generate_appcast" >> "$GITHUB_ENV"
 
       - name: Write Sparkle private key
         env:
