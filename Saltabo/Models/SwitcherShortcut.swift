@@ -17,6 +17,17 @@ enum SwitcherShortcut: String, CaseIterable {
         }
     }
 
+    var modifierSymbol: String {
+        switch self {
+        case .commandTab:
+            return "⌘"
+        case .optionTab:
+            return "⌥"
+        case .controlTab:
+            return "⌃"
+        }
+    }
+
     var modifierFlags: CGEventFlags {
         switch self {
         case .commandTab:
