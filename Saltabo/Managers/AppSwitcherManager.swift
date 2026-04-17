@@ -16,12 +16,37 @@ final class AppSwitcherManager {
     /// (rebuilds re-deliver `mouseEntered` for the view under the cursor and would snap selection).
     private var suppressHoverSelection = false
     private var mouseMoveMonitor: Any?
+    private var outsideClickMonitor: Any?
 
     private init() {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleShortcutChange),
             name: .switcherShortcutDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleSwitcherDisplayStyleChange),
+            name: .switcherDisplayStyleDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleSwitcherSizePresetChange),
+            name: .switcherSizePresetDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleSwitcherThemePresetChange),
+            name: .switcherThemePresetDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleSwitcherReleaseActionChange),
+            name: .switcherReleaseActionDidChange,
             object: nil
         )
     }
@@ -33,6 +58,57 @@ final class AppSwitcherManager {
 
     @objc private func handleShortcutChange() {
         start()
+    }
+
+    @objc private func handleSwitcherDisplayStyleChange() {
+        guard !items.isEmpty else { return }
+        floatingWindow.update(
+            items: items,
+            selectedIndex: selectedIndex,
+            onHoverIndex: { [weak self] index in
+                self?.selectByHover(index: index)
+            },
+            onActivateIndex: { [weak self] index in
+                self?.activateByClick(index: index)
+            }
+        )
+    }
+
+    @objc private func handleSwitcherSizePresetChange() {
+        guard !items.isEmpty else { return }
+        floatingWindow.update(
+            items: items,
+            selectedIndex: selectedIndex,
+            onHoverIndex: { [weak self] index in
+                self?.selectByHover(index: index)
+            },
+            onActivateIndex: { [weak self] index in
+                self?.activateByClick(index: index)
+            }
+        )
+    }
+
+    @objc private func handleSwitcherThemePresetChange() {
+        guard !items.isEmpty else { return }
+        floatingWindow.update(
+            items: items,
+            selectedIndex: selectedIndex,
+            onHoverIndex: { [weak self] index in
+                self?.selectByHover(index: index)
+            },
+            onActivateIndex: { [weak self] index in
+                self?.activateByClick(index: index)
+            }
+        )
+    }
+
+    @objc private func handleSwitcherReleaseActionChange() {
+        guard !items.isEmpty else { return }
+        if AppSettings.shared.switcherReleaseAction == .keepOpen {
+            installOutsideClickMonitorIfNeeded()
+        } else {
+            removeOutsideClickMonitor()
+        }
     }
 
     func showSwitcherForCurrentSpace() {
@@ -99,7 +175,12 @@ final class AppSwitcherManager {
             shortcut.matchesModifierRelease(keyCode: keyCode, flags: flags)
         {
             DispatchQueue.main.async {
-                self.commitSelection()
+                switch AppSettings.shared.switcherReleaseAction {
+                case .focusSelectedWindow:
+                    self.commitSelection()
+                case .keepOpen:
+                    self.suppressHoverSelection = false
+                }
             }
         }
 
@@ -123,7 +204,12 @@ final class AppSwitcherManager {
             items = stabilizedCycleItems(from: windowService.currentSpaceApplications(on: activeScreen()))
             guard !items.isEmpty else { return }
             SettingsWindowController.shared.suppressForSwitcherIfVisible()
-            ThumbnailCache.shared.warm(items.flatMap(\.windows), targetSize: NSSize(width: 236, height: 132))
+            if AppSettings.shared.switcherDisplayStyle == .thumbnails {
+                ThumbnailCache.shared.warm(
+                    items.flatMap(\.windows),
+                    targetSize: FloatingSwitcherWindow.thumbnailCacheTargetSizeForCurrentPreset()
+                )
+            }
             selectedIndex = nextSelectionIndex(in: items, reverse: reverse)
             // Menu-driven open: allow hover. Shortcut-driven open: keyboard owns selection until mouse moves.
             suppressHoverSelection = !explicitOpen
@@ -138,6 +224,7 @@ final class AppSwitcherManager {
                 }
             )
             installMouseMoveMonitorIfNeeded()
+            installOutsideClickMonitorIfNeeded()
             return
         }
 
@@ -155,10 +242,12 @@ final class AppSwitcherManager {
             }
         )
         installMouseMoveMonitorIfNeeded()
+        installOutsideClickMonitorIfNeeded()
     }
 
     private func commitSelection() {
         removeMouseMoveMonitor()
+        removeOutsideClickMonitor()
         defer {
             items = []
             selectedIndex = 0
@@ -172,6 +261,7 @@ final class AppSwitcherManager {
 
     private func cancel() {
         removeMouseMoveMonitor()
+        removeOutsideClickMonitor()
         items = []
         selectedIndex = 0
         floatingWindow.hide()
@@ -244,5 +334,31 @@ final class AppSwitcherManager {
             self.mouseMoveMonitor = nil
         }
         suppressHoverSelection = false
+    }
+
+    private func installOutsideClickMonitorIfNeeded() {
+        guard AppSettings.shared.switcherReleaseAction == .keepOpen else {
+            removeOutsideClickMonitor()
+            return
+        }
+        guard outsideClickMonitor == nil else { return }
+        outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+        ) { [weak self] _ in
+            guard let self else { return }
+            let point = NSEvent.mouseLocation
+            guard !self.floatingWindow.contains(screenPoint: point) else { return }
+            DispatchQueue.main.async {
+                guard !self.items.isEmpty else { return }
+                self.cancel()
+            }
+        }
+    }
+
+    private func removeOutsideClickMonitor() {
+        if let outsideClickMonitor {
+            NSEvent.removeMonitor(outsideClickMonitor)
+            self.outsideClickMonitor = nil
+        }
     }
 }

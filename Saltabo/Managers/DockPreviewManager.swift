@@ -16,22 +16,52 @@ final class DockPreviewManager {
     private var currentBundleIdentifier: String?
     private var pendingHideWorkItem: DispatchWorkItem?
 
-    private init() {}
+    private init() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handlePreviewSelectedWindowSettingChanged),
+            name: .switcherPreviewSelectedWindowDidChange,
+            object: nil
+        )
+    }
 
     func start() {
+        applyMonitoringStateFromSettings()
+    }
+
+    func stop() {
+        disableMonitoring()
+    }
+
+    @objc private func handlePreviewSelectedWindowSettingChanged() {
+        applyMonitoringStateFromSettings()
+    }
+
+    private func applyMonitoringStateFromSettings() {
+        if AppSettings.shared.switcherPreviewSelectedWindow {
+            enableMonitoring()
+        } else {
+            disableMonitoring()
+            hidePreview()
+        }
+    }
+
+    private func enableMonitoring() {
+        guard monitor == nil else { return }
         monitor = NSEvent.addGlobalMonitorForEvents(matching: [
             .mouseMoved, .leftMouseDown, .rightMouseDown,
         ]) { [weak self] event in
             self?.handle(event: event)
         }
 
+        guard pollingTimer == nil else { return }
         pollingTimer = Timer.scheduledTimer(withTimeInterval: 0.18, repeats: true) {
             [weak self] _ in
             self?.refreshForCurrentMouseLocation()
         }
     }
 
-    func stop() {
+    private func disableMonitoring() {
         if let monitor {
             NSEvent.removeMonitor(monitor)
         }

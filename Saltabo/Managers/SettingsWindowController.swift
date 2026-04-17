@@ -66,6 +66,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private let shortcutPopup = NSPopUpButton()
+    private let switcherSizeControl = NSSegmentedControl()
+    private let switcherThemeControl = NSSegmentedControl()
+    private let switcherReleaseActionPopup = NSPopUpButton()
+    private let switcherPreviewSelectedWindowToggle = NSSwitch()
     private let accessibilityStatusField = BadgeStatusView(frame: .zero)
     private let screenRecordingStatusField = BadgeStatusView(frame: .zero)
     private let permissionsStack = NSStackView()
@@ -76,6 +80,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private var activeTab: SettingsTab = .general
     private var shouldRestoreAfterSystemSettings = false
     private var wasSuppressedForSwitcher = false
+    private weak var switcherStyleThumbnailTile: NSButton?
+    private weak var switcherStyleAppIconsTile: NSButton?
+    private weak var switcherStyleListTile: NSButton?
 
     private init() {
         let window = NSWindow(
@@ -120,6 +127,36 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             name: .switcherShortcutDidChange,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(refreshSwitcherStyleTileSelection),
+            name: .switcherDisplayStyleDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(syncSwitcherSizeSelection),
+            name: .switcherSizePresetDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(syncSwitcherThemeSelection),
+            name: .switcherThemePresetDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(syncSwitcherReleaseActionSelection),
+            name: .switcherReleaseActionDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(syncSwitcherPreviewSelectedWindowSelection),
+            name: .switcherPreviewSelectedWindowDidChange,
+            object: nil
+        )
         NSWorkspace.shared.notificationCenter.addObserver(
             self,
             selector: #selector(handleWorkspaceAppDeactivation(_:)),
@@ -128,6 +165,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         )
 
         syncShortcutSelection()
+        syncSwitcherSizeSelection()
+        syncSwitcherThemeSelection()
+        syncSwitcherReleaseActionSelection()
+        syncSwitcherPreviewSelectedWindowSelection()
         refreshPermissionState()
     }
 
@@ -137,6 +178,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     func showSettings() {
         syncShortcutSelection()
+        syncSwitcherSizeSelection()
+        syncSwitcherThemeSelection()
+        syncSwitcherReleaseActionSelection()
+        syncSwitcherPreviewSelectedWindowSelection()
+        refreshSwitcherStyleTileSelection()
         refreshPermissionState()
         NSApp.setActivationPolicy(.regular)
         showWindow(nil)
@@ -946,34 +992,81 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         row.alignment = .top
         row.translatesAutoresizingMaskIntoConstraints = false
 
-        row.addArrangedSubview(makeStyleTile(title: "Thumbnails", selected: false))
-        row.addArrangedSubview(makeStyleTile(title: "App Icons", selected: true))
-        // row.addArrangedSubview(makeStyleTile(title: "Titles", selected: false))
+        let style = AppSettings.shared.switcherDisplayStyle
+        let thumbnailsButton = makeSwitcherTile(
+            tag: 0, imageName: "SwitcherStyleThumbnailsPreview", selected: style == .thumbnails)
+        let appIconsButton = makeSwitcherTile(
+            tag: 1, imageName: "SwitcherStyleAppIconsPreview", selected: style == .appIcons)
+        let listButton = makeSwitcherTile(
+            tag: 2, imageName: "SwitcherStyleListPreview", selected: style == .list)
+        switcherStyleThumbnailTile = thumbnailsButton
+        switcherStyleAppIconsTile = appIconsButton
+        switcherStyleListTile = listButton
+
+        row.addArrangedSubview(thumbnailsButton)
+        row.addArrangedSubview(appIconsButton)
+        row.addArrangedSubview(listButton)
         return row
     }
 
-    private func makeStyleTile(title: String, selected: Bool) -> NSView {
-        let box = NSView()
-        box.wantsLayer = true
-        box.layer?.cornerRadius = 8
-        box.layer?.borderWidth = 1
-        box.layer?.borderColor = (selected ? NSColor.controlAccentColor : .separatorColor).cgColor
-        box.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
-        box.translatesAutoresizingMaskIntoConstraints = false
-        box.widthAnchor.constraint(equalToConstant: 190).isActive = true
-        box.heightAnchor.constraint(equalToConstant: 140).isActive = true
+    private func makeSwitcherTile(tag: Int, imageName: String, selected: Bool) -> NSButton {
+        let button = NSButton(
+            title: "", target: self, action: #selector(switcherDisplayStyleTileClicked(_:)))
+        button.tag = tag
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.isBordered = false
+        button.bezelStyle = .shadowlessSquare
+        button.setButtonType(.momentaryPushIn)
+        button.image = NSImage(named: imageName)
+        button.imagePosition = .imageOnly
+        button.imageScaling = .scaleAxesIndependently
+        button.widthAnchor.constraint(equalToConstant: 190).isActive = true
+        button.heightAnchor.constraint(equalToConstant: 140).isActive = true
+        applySwitcherStyleTileAppearance(to: button, selected: selected)
+        return button
+    }
 
-        let label = NSTextField(labelWithString: title)
-        label.font = .systemFont(ofSize: 18, weight: .medium)
-        label.textColor = .secondaryLabelColor
-        label.alignment = .center
-        label.translatesAutoresizingMaskIntoConstraints = false
-        box.addSubview(label)
-        NSLayoutConstraint.activate([
-            label.centerXAnchor.constraint(equalTo: box.centerXAnchor),
-            label.centerYAnchor.constraint(equalTo: box.centerYAnchor),
-        ])
-        return box
+    private func applySwitcherStyleTileAppearance(to button: NSButton, selected: Bool) {
+        button.wantsLayer = true
+        button.layer?.cornerRadius = 8
+        button.layer?.borderWidth = selected ? 3 : 1
+        button.layer?.borderColor =
+            (selected ? NSColor.controlAccentColor : NSColor.separatorColor).cgColor
+        button.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
+        let color = selected ? NSColor.labelColor : NSColor.secondaryLabelColor
+        button.attributedTitle = NSAttributedString(
+            string: button.title,
+            attributes: [
+                .font: NSFont.systemFont(ofSize: 18, weight: .medium),
+                .foregroundColor: color,
+            ]
+        )
+    }
+
+    @objc private func switcherDisplayStyleTileClicked(_ sender: NSButton) {
+        let newStyle: SwitcherDisplayStyle
+        switch sender.tag {
+        case 1:
+            newStyle = .appIcons
+        case 2:
+            newStyle = .list
+        default:
+            newStyle = .thumbnails
+        }
+        AppSettings.shared.switcherDisplayStyle = newStyle
+    }
+
+    @objc private func refreshSwitcherStyleTileSelection() {
+        let style = AppSettings.shared.switcherDisplayStyle
+        if let button = switcherStyleThumbnailTile {
+            applySwitcherStyleTileAppearance(to: button, selected: style == .thumbnails)
+        }
+        if let button = switcherStyleAppIconsTile {
+            applySwitcherStyleTileAppearance(to: button, selected: style == .appIcons)
+        }
+        if let button = switcherStyleListTile {
+            applySwitcherStyleTileAppearance(to: button, selected: style == .list)
+        }
     }
 
     private func makeSettingsCard() -> NSView {
@@ -995,38 +1088,28 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         stack.addArrangedSubview(
             makeAppearanceControlRow(
                 title: "Size",
-                control: makeSegmentedControl(
-                    labels: ["Small", "Medium", "Large", "Auto"],
-                    selectedIndex: 0
-                )
+                control: makeSwitcherSizeControl()
             )
         )
         stack.addArrangedSubview(makeDivider())
         stack.addArrangedSubview(
             makeAppearanceControlRow(
                 title: "Theme",
-                control: makeSegmentedControl(
-                    labels: ["Light", "Dark", "System"],
-                    selectedIndex: 2
-                )
+                control: makeSwitcherThemeControl()
             )
         )
         stack.addArrangedSubview(makeDivider())
         stack.addArrangedSubview(
             makeAppearanceControlRow(
                 title: "After keys are released",
-                control: makeAppearancePopup(
-                    titles: ["Focus selected window", "Keep Open"],
-                    selectedIndex: 0,
-                    width: 180
-                )
+                control: makeSwitcherReleaseActionPopup()
             )
         )
         stack.addArrangedSubview(makeDivider())
         stack.addArrangedSubview(
             makeAppearanceControlRow(
-                title: "Preview selected window",
-                control: makeAppearanceSwitch(isOn: true)
+                title: "Dock shows window previews",
+                control: makeSwitcherPreviewSelectedWindowToggle()
             )
         )
 
@@ -1086,6 +1169,131 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         control.selectedSegment = selectedIndex
         control.controlSize = .regular
         return control
+    }
+
+    private func makeSwitcherSizeControl() -> NSSegmentedControl {
+        switcherSizeControl.translatesAutoresizingMaskIntoConstraints = false
+        switcherSizeControl.segmentStyle = .rounded
+        switcherSizeControl.controlSize = .regular
+        switcherSizeControl.target = self
+        switcherSizeControl.action = #selector(switcherSizeChanged(_:))
+        if switcherSizeControl.segmentCount == 0 {
+            switcherSizeControl.segmentCount = 4
+            switcherSizeControl.setLabel("Small", forSegment: 0)
+            switcherSizeControl.setLabel("Medium", forSegment: 1)
+            switcherSizeControl.setLabel("Large", forSegment: 2)
+            switcherSizeControl.setLabel("Auto", forSegment: 3)
+        }
+        syncSwitcherSizeSelection()
+        return switcherSizeControl
+    }
+
+    @objc private func switcherSizeChanged(_ sender: NSSegmentedControl) {
+        let preset: SwitcherSizePreset
+        switch sender.selectedSegment {
+        case 0: preset = .small
+        case 1: preset = .medium
+        case 2: preset = .large
+        default: preset = .auto
+        }
+        AppSettings.shared.switcherSizePreset = preset
+    }
+
+    @objc private func syncSwitcherSizeSelection() {
+        let selectedSegment: Int
+        switch AppSettings.shared.switcherSizePreset {
+        case .small: selectedSegment = 0
+        case .medium: selectedSegment = 1
+        case .large: selectedSegment = 2
+        case .auto: selectedSegment = 3
+        }
+        switcherSizeControl.selectedSegment = selectedSegment
+    }
+
+    private func makeSwitcherThemeControl() -> NSSegmentedControl {
+        switcherThemeControl.translatesAutoresizingMaskIntoConstraints = false
+        switcherThemeControl.segmentStyle = .rounded
+        switcherThemeControl.controlSize = .regular
+        switcherThemeControl.target = self
+        switcherThemeControl.action = #selector(switcherThemeChanged(_:))
+        if switcherThemeControl.segmentCount == 0 {
+            switcherThemeControl.segmentCount = 3
+            switcherThemeControl.setLabel("Light", forSegment: 0)
+            switcherThemeControl.setLabel("Dark", forSegment: 1)
+            switcherThemeControl.setLabel("System", forSegment: 2)
+        }
+        syncSwitcherThemeSelection()
+        return switcherThemeControl
+    }
+
+    private func makeSwitcherReleaseActionPopup() -> NSPopUpButton {
+        switcherReleaseActionPopup.translatesAutoresizingMaskIntoConstraints = false
+        switcherReleaseActionPopup.controlSize = .regular
+        switcherReleaseActionPopup.target = self
+        switcherReleaseActionPopup.action = #selector(switcherReleaseActionChanged(_:))
+        switcherReleaseActionPopup.widthAnchor.constraint(equalToConstant: 200).isActive = true
+        if switcherReleaseActionPopup.numberOfItems == 0 {
+            switcherReleaseActionPopup.addItems(withTitles: ["Focus selected window", "Keep Open"])
+        }
+        syncSwitcherReleaseActionSelection()
+        return switcherReleaseActionPopup
+    }
+
+    private func makeSwitcherPreviewSelectedWindowToggle() -> NSSwitch {
+        switcherPreviewSelectedWindowToggle.translatesAutoresizingMaskIntoConstraints = false
+        switcherPreviewSelectedWindowToggle.controlSize = .mini
+        switcherPreviewSelectedWindowToggle.target = self
+        switcherPreviewSelectedWindowToggle.action = #selector(
+            switcherPreviewSelectedWindowChanged(_:))
+        syncSwitcherPreviewSelectedWindowSelection()
+        return switcherPreviewSelectedWindowToggle
+    }
+
+    @objc private func switcherThemeChanged(_ sender: NSSegmentedControl) {
+        let preset: SwitcherThemePreset
+        switch sender.selectedSegment {
+        case 0: preset = .light
+        case 1: preset = .dark
+        default: preset = .system
+        }
+        AppSettings.shared.switcherThemePreset = preset
+    }
+
+    @objc private func switcherReleaseActionChanged(_ sender: NSPopUpButton) {
+        switch sender.indexOfSelectedItem {
+        case 1:
+            AppSettings.shared.switcherReleaseAction = .keepOpen
+        default:
+            AppSettings.shared.switcherReleaseAction = .focusSelectedWindow
+        }
+    }
+
+    @objc private func switcherPreviewSelectedWindowChanged(_ sender: NSSwitch) {
+        AppSettings.shared.switcherPreviewSelectedWindow = (sender.state == .on)
+    }
+
+    @objc private func syncSwitcherThemeSelection() {
+        let selectedSegment: Int
+        switch AppSettings.shared.switcherThemePreset {
+        case .light: selectedSegment = 0
+        case .dark: selectedSegment = 1
+        case .system: selectedSegment = 2
+        }
+        switcherThemeControl.selectedSegment = selectedSegment
+    }
+
+    @objc private func syncSwitcherReleaseActionSelection() {
+        switch AppSettings.shared.switcherReleaseAction {
+        case .focusSelectedWindow:
+            switcherReleaseActionPopup.selectItem(at: 0)
+        case .keepOpen:
+            switcherReleaseActionPopup.selectItem(at: 1)
+        }
+    }
+
+    @objc private func syncSwitcherPreviewSelectedWindowSelection() {
+        switcherPreviewSelectedWindowToggle.state =
+            AppSettings.shared.switcherPreviewSelectedWindow ? .on : .off
     }
 
     private func makeAppearancePopup(
