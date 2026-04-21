@@ -196,11 +196,44 @@ final class FloatingSwitcherWindow {
 
         var originX = contentInset.left
         var originY = contentInset.bottom
+        let columns = isList ? 1 : maxColumnsForGrid(itemSize: itemSize, itemCount: items.count)
+        let rows = isList ? items.count : Int(ceil(Double(items.count) / Double(columns)))
+        let usedHeight =
+            CGFloat(rows) * itemSize.height + CGFloat(max(rows - 1, 0)) * itemSpacing
+
         if isList {
             originY = backgroundCardView.bounds.height - contentInset.top - itemSize.height
+        } else {
+            let usedWidth =
+                CGFloat(columns) * itemSize.width + CGFloat(max(columns - 1, 0)) * itemSpacing
+            originX = max(
+                contentInset.left,
+                (backgroundCardView.bounds.width - usedWidth) / 2
+            )
+            originY = max(
+                contentInset.bottom,
+                (backgroundCardView.bounds.height + usedHeight) / 2 - itemSize.height
+            )
         }
 
         for (index, item) in items.enumerated() {
+            if !isList {
+                let row = index / columns
+                let column = index % columns
+                let remaining = items.count - (row * columns)
+                let itemsInRow = min(columns, remaining)
+                let rowUsedWidth =
+                    CGFloat(itemsInRow) * itemSize.width
+                    + CGFloat(max(itemsInRow - 1, 0)) * itemSpacing
+                originX = max(
+                    contentInset.left,
+                    (backgroundCardView.bounds.width - rowUsedWidth) / 2
+                ) + CGFloat(column) * (itemSize.width + itemSpacing)
+                originY = max(
+                    contentInset.bottom,
+                    (backgroundCardView.bounds.height + usedHeight) / 2 - itemSize.height
+                ) - CGFloat(row) * (itemSize.height + itemSpacing)
+            }
             let view = AppSwitcherItemView(frame: NSRect(origin: .zero, size: itemSize))
             view.configure(
                 with: item,
@@ -217,8 +250,6 @@ final class FloatingSwitcherWindow {
             backgroundCardView.addSubview(view)
             if isList {
                 originY -= itemSize.height + itemSpacing
-            } else {
-                originX += itemSize.width + itemSpacing
             }
         }
     }
@@ -248,12 +279,18 @@ final class FloatingSwitcherWindow {
                 + Metrics.panelInset * 2
             return NSSize(width: width, height: height)
         }
+        let columns = maxColumnsForGrid(itemSize: itemSize, itemCount: itemCount)
+        let rows = Int(ceil(Double(itemCount) / Double(columns)))
         let contentWidth =
             contentInset.left
             + contentInset.right
-            + CGFloat(itemCount) * itemSize.width
-            + CGFloat(max(itemCount - 1, 0)) * itemSpacing
-        let contentHeight = contentInset.top + contentInset.bottom + itemSize.height
+            + CGFloat(columns) * itemSize.width
+            + CGFloat(max(columns - 1, 0)) * itemSpacing
+        let contentHeight =
+            contentInset.top
+            + contentInset.bottom
+            + CGFloat(rows) * itemSize.height
+            + CGFloat(max(rows - 1, 0)) * itemSpacing
         let minimumWidth =
             itemSize.width + contentInset.left + contentInset.right
             + Metrics.panelInset * 2
@@ -334,5 +371,17 @@ final class FloatingSwitcherWindow {
 
     private func screenForPresentation() -> NSScreen? {
         NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
+    }
+
+    private func maxColumnsForGrid(itemSize: NSSize, itemCount: Int) -> Int {
+        guard itemCount > 1 else { return 1 }
+        let screenWidth = screenForPresentation()?.visibleFrame.width ?? 1440
+        let availableWidth = max(
+            itemSize.width,
+            screenWidth - Metrics.panelInset * 2 - Metrics.contentInset.left - Metrics.contentInset.right - 32
+        )
+        let slotWidth = itemSize.width + Metrics.itemSpacing
+        let columns = Int((availableWidth + Metrics.itemSpacing) / slotWidth)
+        return max(1, min(itemCount, columns))
     }
 }

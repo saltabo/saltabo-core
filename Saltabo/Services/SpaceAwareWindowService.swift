@@ -19,6 +19,11 @@ final class SpaceAwareWindowService {
         return groupApplications(from: visibleWindows)
     }
 
+    func allWindowsApplications() -> [SwitcherApp] {
+        let allWindows = fetchWindows(options: [.optionAll])
+        return groupApplications(from: allWindows)
+    }
+
     func switcherApplications(on screen: NSScreen?) -> [SwitcherApp] {
         let screenScoped = currentSpaceApplications(on: screen)
         if !screenScoped.isEmpty {
@@ -56,6 +61,10 @@ final class SpaceAwareWindowService {
             return chromePreviewWindows(from: sourceWindows, pid: app.processIdentifier)
         }
 
+        if app.bundleIdentifier == "com.tinyapp.TablePlus" {
+            return tablePlusPreviewWindows(from: allWindows)
+        }
+
         return preferredPreviewWindows(from: allWindows)
     }
 
@@ -69,13 +78,32 @@ final class SpaceAwareWindowService {
 
     func focus(window: WindowDescriptor) {
         if let app = NSRunningApplication(processIdentifier: window.pid) {
-            app.activate(options: [.activateAllWindows])
+            if app.isHidden {
+                app.unhide()
+            }
+            app.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
         }
 
         if !AccessibilityService.shared.raiseWindow(matching: window),
            let app = NSRunningApplication(processIdentifier: window.pid) {
-            app.activate()
+            if app.isHidden {
+                app.unhide()
+            }
+            app.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+            // If the target window has already been closed, ask macOS to reopen the app
+            // (equivalent to clicking the Dock icon), so users still get a visible window.
+            if accessibilityService.windows(for: window.pid).isEmpty {
+                reopenApp(app)
+            }
         }
+    }
+
+    private func reopenApp(_ app: NSRunningApplication) {
+        guard let bundleURL = app.bundleURL else { return }
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.activates = true
+        configuration.createsNewApplicationInstance = false
+        NSWorkspace.shared.openApplication(at: bundleURL, configuration: configuration) { _, _ in }
     }
 
     private func groupApplications(from windows: [WindowDescriptor]) -> [SwitcherApp] {
@@ -93,13 +121,63 @@ final class SpaceAwareWindowService {
             guard let appWindows = grouped[pid], let first = appWindows.first else {
                 return nil
             }
+            let normalizedWindows = normalizedSwitcherWindows(for: appWindows)
             return SwitcherApp(
                 pid: pid,
                 bundleIdentifier: first.bundleIdentifier,
                 appName: first.appName,
-                windows: appWindows.sorted { $0.orderIndex < $1.orderIndex }
+                windows: normalizedWindows
             )
         }
+    }
+
+    private func normalizedSwitcherWindows(for windows: [WindowDescriptor]) -> [WindowDescriptor] {
+        let sortedWindows = windows.sorted { $0.orderIndex < $1.orderIndex }
+        guard let first = sortedWindows.first else { return [] }
+
+        // TablePlus can expose many transient SQL-named windows that are not useful
+        // as standalone switcher targets. Collapse those cases into one representative item.
+        if first.bundleIdentifier == "com.tinyapp.TablePlus" {
+            let hasLikelySQLNoise = sortedWindows.contains { isLikelyTablePlusSQLNoiseTitle($0.title) }
+            if hasLikelySQLNoise {
+                if let representative = preferredRepresentativeWindow(from: sortedWindows) {
+                    return [representative]
+                }
+            }
+        }
+
+        return sortedWindows
+    }
+
+    private func preferredRepresentativeWindow(from windows: [WindowDescriptor]) -> WindowDescriptor? {
+        let nonSQLCandidates = windows.filter { !isLikelyTablePlusSQLNoiseTitle($0.title) }
+        let source = nonSQLCandidates.isEmpty ? windows : nonSQLCandidates
+        return source.max {
+            let lhsArea = $0.bounds.width * $0.bounds.height
+            let rhsArea = $1.bounds.width * $1.bounds.height
+            if abs(lhsArea - rhsArea) > 1 {
+                return lhsArea < rhsArea
+            }
+            return $0.orderIndex > $1.orderIndex
+        }
+    }
+
+    private func tablePlusPreviewWindows(from windows: [WindowDescriptor]) -> [WindowDescriptor] {
+        guard !windows.isEmpty else { return [] }
+        // Dock preview should show a single stable entry for TablePlus.
+        if let representative = preferredRepresentativeWindow(from: windows) {
+            return [representative]
+        }
+        return [windows[0]]
+    }
+
+    private func isLikelyTablePlusSQLNoiseTitle(_ title: String) -> Bool {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        let lower = trimmed.lowercased()
+        return lower.hasSuffix(".sql")
+            || lower.contains("backup")
+            || lower.contains("dump")
     }
 
     private func filter(windows: [WindowDescriptor], to screen: NSScreen?) -> [WindowDescriptor] {
@@ -145,6 +223,7 @@ final class SpaceAwareWindowService {
                 appName: app?.localizedName ?? ownerName,
                 title: rawWindow[kCGWindowName as String] as? String ?? "",
                 bounds: bounds,
+                isOnScreen: (rawWindow[kCGWindowIsOnscreen as String] as? Int ?? 0) != 0,
                 windowLayer: layer,
                 orderIndex: index
             )
@@ -222,6 +301,7 @@ final class SpaceAwareWindowService {
                     appName: bestWindow.appName,
                     title: snapshot.title,
                     bounds: bestWindow.bounds,
+                    isOnScreen: bestWindow.isOnScreen,
                     windowLayer: bestWindow.windowLayer,
                     orderIndex: bestWindow.orderIndex
                 )

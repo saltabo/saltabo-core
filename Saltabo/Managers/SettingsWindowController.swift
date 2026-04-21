@@ -66,6 +66,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     private let shortcutPopup = NSPopUpButton()
+    private let switcherApplicationScopePopup = NSPopUpButton()
+    private let switcherScreenScopePopup = NSPopUpButton()
+    private let switcherMinimizedWindowsPopup = NSPopUpButton()
+    private let switcherHiddenWindowsPopup = NSPopUpButton()
+    private let switcherFullscreenWindowsPopup = NSPopUpButton()
+    private let switcherOrderPreferencePopup = NSPopUpButton()
+    private let switcherTriggerKeyButton = NSButton()
     private let switcherSizeControl = NSSegmentedControl()
     private let switcherThemeControl = NSSegmentedControl()
     private let switcherReleaseActionPopup = NSPopUpButton()
@@ -83,6 +90,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private weak var switcherStyleThumbnailTile: NSButton?
     private weak var switcherStyleAppIconsTile: NSButton?
     private weak var switcherStyleListTile: NSButton?
+    private var triggerKeyCaptureMonitor: Any?
 
     private init() {
         let window = NSWindow(
@@ -110,7 +118,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.standardWindowButton(.zoomButton)?.isHidden = false
         window.standardWindowButton(.closeButton)?.isEnabled = true
         window.standardWindowButton(.miniaturizeButton)?.isEnabled = true
-        window.standardWindowButton(.zoomButton)?.isEnabled = true
+        window.standardWindowButton(.zoomButton)?.isEnabled = false
         DispatchQueue.main.async { [weak self] in
             self?.layoutTrafficButtons()
         }
@@ -125,6 +133,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             self,
             selector: #selector(syncShortcutSelection),
             name: .switcherShortcutDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(syncSwitcherTriggerKeyButtonTitle),
+            name: .switcherTriggerKeyCodeDidChange,
             object: nil
         )
         NotificationCenter.default.addObserver(
@@ -157,6 +171,42 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             name: .switcherPreviewSelectedWindowDidChange,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(syncSwitcherApplicationScopeSelection),
+            name: .switcherApplicationScopeDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(syncSwitcherScreenScopeSelection),
+            name: .switcherScreenScopeDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(syncSwitcherMinimizedWindowsSelection),
+            name: .switcherMinimizedWindowsVisibilityDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(syncSwitcherHiddenWindowsSelection),
+            name: .switcherHiddenWindowsVisibilityDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(syncSwitcherFullscreenWindowsSelection),
+            name: .switcherFullscreenWindowsVisibilityDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(syncSwitcherOrderPreferenceSelection),
+            name: .switcherOrderPreferenceDidChange,
+            object: nil
+        )
         NSWorkspace.shared.notificationCenter.addObserver(
             self,
             selector: #selector(handleWorkspaceAppDeactivation(_:)),
@@ -165,10 +215,17 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         )
 
         syncShortcutSelection()
+        syncSwitcherTriggerKeyButtonTitle()
         syncSwitcherSizeSelection()
         syncSwitcherThemeSelection()
         syncSwitcherReleaseActionSelection()
         syncSwitcherPreviewSelectedWindowSelection()
+        syncSwitcherApplicationScopeSelection()
+        syncSwitcherScreenScopeSelection()
+        syncSwitcherMinimizedWindowsSelection()
+        syncSwitcherHiddenWindowsSelection()
+        syncSwitcherFullscreenWindowsSelection()
+        syncSwitcherOrderPreferenceSelection()
         refreshPermissionState()
     }
 
@@ -178,10 +235,17 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     func showSettings() {
         syncShortcutSelection()
+        syncSwitcherTriggerKeyButtonTitle()
         syncSwitcherSizeSelection()
         syncSwitcherThemeSelection()
         syncSwitcherReleaseActionSelection()
         syncSwitcherPreviewSelectedWindowSelection()
+        syncSwitcherApplicationScopeSelection()
+        syncSwitcherScreenScopeSelection()
+        syncSwitcherMinimizedWindowsSelection()
+        syncSwitcherHiddenWindowsSelection()
+        syncSwitcherFullscreenWindowsSelection()
+        syncSwitcherOrderPreferenceSelection()
         refreshSwitcherStyleTileSelection()
         refreshPermissionState()
         NSApp.setActivationPolicy(.regular)
@@ -473,7 +537,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         card.widthAnchor.constraint(equalToConstant: 610).isActive = true
         card.heightAnchor.constraint(equalToConstant: 54).isActive = true
 
-        let triggerLabel = NSTextField(labelWithString: "Trigger")
+        let triggerLabel = NSTextField(labelWithString: "Trigger:")
         triggerLabel.translatesAutoresizingMaskIntoConstraints = false
         triggerLabel.font = .systemFont(ofSize: 13, weight: .regular)
 
@@ -494,23 +558,22 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         andPressLabel.translatesAutoresizingMaskIntoConstraints = false
         andPressLabel.font = .systemFont(ofSize: 13)
 
-        let keyCapsule = NSTextField(labelWithString: "⇥")
-        keyCapsule.translatesAutoresizingMaskIntoConstraints = false
-        keyCapsule.alignment = .center
-        keyCapsule.font = .systemFont(ofSize: 14, weight: .medium)
-        keyCapsule.wantsLayer = true
-        keyCapsule.layer?.cornerRadius = 6
-        keyCapsule.layer?.borderWidth = 1
-        keyCapsule.layer?.borderColor = NSColor.separatorColor.cgColor
-        keyCapsule.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
-        keyCapsule.widthAnchor.constraint(equalToConstant: 98).isActive = true
-        keyCapsule.heightAnchor.constraint(equalToConstant: 24).isActive = true
+        switcherTriggerKeyButton.translatesAutoresizingMaskIntoConstraints = false
+        switcherTriggerKeyButton.isBordered = true
+        switcherTriggerKeyButton.bezelStyle = .rounded
+        switcherTriggerKeyButton.controlSize = .regular
+        switcherTriggerKeyButton.font = .systemFont(ofSize: 13, weight: .medium)
+        switcherTriggerKeyButton.target = self
+        switcherTriggerKeyButton.action = #selector(beginTriggerKeyCapture)
+        switcherTriggerKeyButton.widthAnchor.constraint(equalToConstant: 98).isActive = true
+        switcherTriggerKeyButton.heightAnchor.constraint(equalToConstant: 54).isActive = true
+        syncSwitcherTriggerKeyButtonTitle()
 
         card.addSubview(triggerLabel)
         card.addSubview(holdLabel)
         card.addSubview(modifierPopup)
         card.addSubview(andPressLabel)
-        card.addSubview(keyCapsule)
+        card.addSubview(switcherTriggerKeyButton)
 
         NSLayoutConstraint.activate([
             triggerLabel.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 12),
@@ -526,9 +589,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                 equalTo: modifierPopup.trailingAnchor, constant: 16),
             andPressLabel.centerYAnchor.constraint(equalTo: card.centerYAnchor),
 
-            keyCapsule.leadingAnchor.constraint(
+            switcherTriggerKeyButton.leadingAnchor.constraint(
                 equalTo: andPressLabel.trailingAnchor, constant: 12),
-            keyCapsule.centerYAnchor.constraint(equalTo: card.centerYAnchor),
+            switcherTriggerKeyButton.centerYAnchor.constraint(equalTo: card.centerYAnchor),
         ])
 
         if let index = SwitcherShortcut.allCases.firstIndex(of: AppSettings.shared.switcherShortcut)
@@ -558,32 +621,38 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         stack.addArrangedSubview(
             makeControlsOptionRow(
                 title: "Show windows from applications",
-                options: ["All apps", "Active apps", "Non-active apps"], selectedIndex: 0,
-                width: 126))
+                control: makeSwitcherApplicationScopePopup()
+            ))
         stack.addArrangedSubview(makeDivider())
         stack.addArrangedSubview(
             makeControlsOptionRow(
                 title: "Show windows from screens",
-                options: ["Current screen only", "All screens"], selectedIndex: 0,
-                width: 180))
+                control: makeSwitcherScreenScopePopup()
+            ))
         stack.addArrangedSubview(makeDivider())
         stack.addArrangedSubview(
             makeControlsOptionRow(
-                title: "Show minimized windows", options: ["Show", "Hide"], selectedIndex: 0,
-                width: 84))
+                title: "Show minimized windows",
+                control: makeSwitcherMinimizedWindowsPopup()
+            ))
         stack.addArrangedSubview(makeDivider())
         stack.addArrangedSubview(
             makeControlsOptionRow(
-                title: "Show fullscreen windows", options: ["Show", "Hide"], selectedIndex: 0,
-                width: 84))
+                title: "Show hidden windows",
+                control: makeSwitcherHiddenWindowsPopup()
+            ))
+        stack.addArrangedSubview(makeDivider())
+        stack.addArrangedSubview(
+            makeControlsOptionRow(
+                title: "Show fullscreen windows",
+                control: makeSwitcherFullscreenWindowsPopup()
+            ))
         stack.addArrangedSubview(makeDivider())
         stack.addArrangedSubview(
             makeControlsOptionRow(
                 title: "Order windows by",
-                options: [
-                    "Recently Focused First", "Recently Opened First", "Name A-z", "Name Z-a",
-                ], selectedIndex: 0,
-                width: 180))
+                control: makeSwitcherOrderPreferencePopup()
+            ))
 
         card.addSubview(stack)
         NSLayoutConstraint.activate([
@@ -598,18 +667,94 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     private func makeControlsOptionRow(
         title: String,
-        options: [String],
-        selectedIndex: Int,
-        width: CGFloat
+        control: NSView
     ) -> NSView {
         makeAppearanceControlRow(
             title: title,
-            control: makeAppearancePopup(
-                titles: options,
-                selectedIndex: selectedIndex,
-                width: width
-            )
+            control: control
         )
+    }
+
+    private func makeSwitcherApplicationScopePopup() -> NSPopUpButton {
+        switcherApplicationScopePopup.translatesAutoresizingMaskIntoConstraints = false
+        switcherApplicationScopePopup.controlSize = .regular
+        switcherApplicationScopePopup.target = self
+        switcherApplicationScopePopup.action = #selector(switcherApplicationScopeChanged(_:))
+        switcherApplicationScopePopup.widthAnchor.constraint(equalToConstant: 126).isActive = true
+        if switcherApplicationScopePopup.numberOfItems == 0 {
+            switcherApplicationScopePopup.addItems(withTitles: [
+                "All apps", "Active app", "Non-active apps",
+            ])
+        }
+        syncSwitcherApplicationScopeSelection()
+        return switcherApplicationScopePopup
+    }
+
+    private func makeSwitcherScreenScopePopup() -> NSPopUpButton {
+        switcherScreenScopePopup.translatesAutoresizingMaskIntoConstraints = false
+        switcherScreenScopePopup.controlSize = .regular
+        switcherScreenScopePopup.target = self
+        switcherScreenScopePopup.action = #selector(switcherScreenScopeChanged(_:))
+        switcherScreenScopePopup.widthAnchor.constraint(equalToConstant: 160).isActive = true
+        if switcherScreenScopePopup.numberOfItems == 0 {
+            switcherScreenScopePopup.addItems(withTitles: ["Current screen only", "All screens"])
+        }
+        syncSwitcherScreenScopeSelection()
+        return switcherScreenScopePopup
+    }
+
+    private func makeSwitcherMinimizedWindowsPopup() -> NSPopUpButton {
+        switcherMinimizedWindowsPopup.translatesAutoresizingMaskIntoConstraints = false
+        switcherMinimizedWindowsPopup.controlSize = .regular
+        switcherMinimizedWindowsPopup.target = self
+        switcherMinimizedWindowsPopup.action = #selector(switcherMinimizedWindowsChanged(_:))
+        switcherMinimizedWindowsPopup.widthAnchor.constraint(equalToConstant: 84).isActive = true
+        if switcherMinimizedWindowsPopup.numberOfItems == 0 {
+            switcherMinimizedWindowsPopup.addItems(withTitles: ["Show", "Hide"])
+        }
+        syncSwitcherMinimizedWindowsSelection()
+        return switcherMinimizedWindowsPopup
+    }
+
+    private func makeSwitcherHiddenWindowsPopup() -> NSPopUpButton {
+        switcherHiddenWindowsPopup.translatesAutoresizingMaskIntoConstraints = false
+        switcherHiddenWindowsPopup.controlSize = .regular
+        switcherHiddenWindowsPopup.target = self
+        switcherHiddenWindowsPopup.action = #selector(switcherHiddenWindowsChanged(_:))
+        switcherHiddenWindowsPopup.widthAnchor.constraint(equalToConstant: 84).isActive = true
+        if switcherHiddenWindowsPopup.numberOfItems == 0 {
+            switcherHiddenWindowsPopup.addItems(withTitles: ["Show", "Hide"])
+        }
+        syncSwitcherHiddenWindowsSelection()
+        return switcherHiddenWindowsPopup
+    }
+
+    private func makeSwitcherFullscreenWindowsPopup() -> NSPopUpButton {
+        switcherFullscreenWindowsPopup.translatesAutoresizingMaskIntoConstraints = false
+        switcherFullscreenWindowsPopup.controlSize = .regular
+        switcherFullscreenWindowsPopup.target = self
+        switcherFullscreenWindowsPopup.action = #selector(switcherFullscreenWindowsChanged(_:))
+        switcherFullscreenWindowsPopup.widthAnchor.constraint(equalToConstant: 84).isActive = true
+        if switcherFullscreenWindowsPopup.numberOfItems == 0 {
+            switcherFullscreenWindowsPopup.addItems(withTitles: ["Show", "Hide"])
+        }
+        syncSwitcherFullscreenWindowsSelection()
+        return switcherFullscreenWindowsPopup
+    }
+
+    private func makeSwitcherOrderPreferencePopup() -> NSPopUpButton {
+        switcherOrderPreferencePopup.translatesAutoresizingMaskIntoConstraints = false
+        switcherOrderPreferencePopup.controlSize = .regular
+        switcherOrderPreferencePopup.target = self
+        switcherOrderPreferencePopup.action = #selector(switcherOrderPreferenceChanged(_:))
+        switcherOrderPreferencePopup.widthAnchor.constraint(equalToConstant: 180).isActive = true
+        if switcherOrderPreferencePopup.numberOfItems == 0 {
+            switcherOrderPreferencePopup.addItems(withTitles: [
+                "Recently Focused First", "Recently Opened First", "Name A-z", "Name Z-a",
+            ])
+        }
+        syncSwitcherOrderPreferenceSelection()
+        return switcherOrderPreferencePopup
     }
 
     private func buildGeneralTabView() -> NSView {
@@ -1272,6 +1417,58 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         AppSettings.shared.switcherPreviewSelectedWindow = (sender.state == .on)
     }
 
+    @objc private func switcherApplicationScopeChanged(_ sender: NSPopUpButton) {
+        let scope: SwitcherApplicationScope
+        switch sender.indexOfSelectedItem {
+        case 1:
+            scope = .activeAppOnly
+        case 2:
+            scope = .nonActiveApps
+        default:
+            scope = .allApps
+        }
+        AppSettings.shared.switcherApplicationScope = scope
+    }
+
+    @objc private func switcherScreenScopeChanged(_ sender: NSPopUpButton) {
+        let scope: SwitcherScreenScope =
+            sender.indexOfSelectedItem == 1 ? .allScreens : .currentScreenOnly
+        AppSettings.shared.switcherScreenScope = scope
+    }
+
+    @objc private func switcherMinimizedWindowsChanged(_ sender: NSPopUpButton) {
+        let visibility: SwitcherMinimizedWindowsVisibility =
+            sender.indexOfSelectedItem == 1 ? .hide : .show
+        AppSettings.shared.switcherMinimizedWindowsVisibility = visibility
+    }
+
+    @objc private func switcherHiddenWindowsChanged(_ sender: NSPopUpButton) {
+        let visibility: SwitcherHiddenWindowsVisibility =
+            sender.indexOfSelectedItem == 1 ? .hide : .show
+        AppSettings.shared.switcherHiddenWindowsVisibility = visibility
+    }
+
+    @objc private func switcherFullscreenWindowsChanged(_ sender: NSPopUpButton) {
+        let visibility: SwitcherFullscreenWindowsVisibility =
+            sender.indexOfSelectedItem == 1 ? .hide : .show
+        AppSettings.shared.switcherFullscreenWindowsVisibility = visibility
+    }
+
+    @objc private func switcherOrderPreferenceChanged(_ sender: NSPopUpButton) {
+        let preference: SwitcherOrderPreference
+        switch sender.indexOfSelectedItem {
+        case 1:
+            preference = .recentlyOpenedFirst
+        case 2:
+            preference = .nameAZ
+        case 3:
+            preference = .nameZA
+        default:
+            preference = .recentlyFocusedFirst
+        }
+        AppSettings.shared.switcherOrderPreference = preference
+    }
+
     @objc private func syncSwitcherThemeSelection() {
         let selectedSegment: Int
         switch AppSettings.shared.switcherThemePreset {
@@ -1294,6 +1491,66 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     @objc private func syncSwitcherPreviewSelectedWindowSelection() {
         switcherPreviewSelectedWindowToggle.state =
             AppSettings.shared.switcherPreviewSelectedWindow ? .on : .off
+    }
+
+    @objc private func syncSwitcherApplicationScopeSelection() {
+        switch AppSettings.shared.switcherApplicationScope {
+        case .allApps:
+            switcherApplicationScopePopup.selectItem(at: 0)
+        case .activeAppOnly:
+            switcherApplicationScopePopup.selectItem(at: 1)
+        case .nonActiveApps:
+            switcherApplicationScopePopup.selectItem(at: 2)
+        }
+    }
+
+    @objc private func syncSwitcherScreenScopeSelection() {
+        switch AppSettings.shared.switcherScreenScope {
+        case .currentScreenOnly:
+            switcherScreenScopePopup.selectItem(at: 0)
+        case .allScreens:
+            switcherScreenScopePopup.selectItem(at: 1)
+        }
+    }
+
+    @objc private func syncSwitcherMinimizedWindowsSelection() {
+        switch AppSettings.shared.switcherMinimizedWindowsVisibility {
+        case .show:
+            switcherMinimizedWindowsPopup.selectItem(at: 0)
+        case .hide:
+            switcherMinimizedWindowsPopup.selectItem(at: 1)
+        }
+    }
+
+    @objc private func syncSwitcherHiddenWindowsSelection() {
+        switch AppSettings.shared.switcherHiddenWindowsVisibility {
+        case .show:
+            switcherHiddenWindowsPopup.selectItem(at: 0)
+        case .hide:
+            switcherHiddenWindowsPopup.selectItem(at: 1)
+        }
+    }
+
+    @objc private func syncSwitcherFullscreenWindowsSelection() {
+        switch AppSettings.shared.switcherFullscreenWindowsVisibility {
+        case .show:
+            switcherFullscreenWindowsPopup.selectItem(at: 0)
+        case .hide:
+            switcherFullscreenWindowsPopup.selectItem(at: 1)
+        }
+    }
+
+    @objc private func syncSwitcherOrderPreferenceSelection() {
+        switch AppSettings.shared.switcherOrderPreference {
+        case .recentlyFocusedFirst:
+            switcherOrderPreferencePopup.selectItem(at: 0)
+        case .recentlyOpenedFirst:
+            switcherOrderPreferencePopup.selectItem(at: 1)
+        case .nameAZ:
+            switcherOrderPreferencePopup.selectItem(at: 2)
+        case .nameZA:
+            switcherOrderPreferencePopup.selectItem(at: 3)
+        }
     }
 
     private func makeAppearancePopup(
@@ -1392,11 +1649,79 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         shortcutChanged(sender)
     }
 
+    @objc private func beginTriggerKeyCapture() {
+        stopTriggerKeyCapture()
+        switcherTriggerKeyButton.title = "Press key..."
+        triggerKeyCaptureMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) {
+            [weak self] event in
+            guard let self else { return event }
+            let keyCode = event.keyCode
+            if keyCode == 53 {
+                self.syncSwitcherTriggerKeyButtonTitle()
+                self.stopTriggerKeyCapture()
+                return nil
+            }
+            if Self.isModifierKey(keyCode) {
+                return nil
+            }
+            AppSettings.shared.switcherTriggerKeyCode = Int64(keyCode)
+            self.stopTriggerKeyCapture()
+            return nil
+        }
+    }
+
+    @objc private func syncSwitcherTriggerKeyButtonTitle() {
+        let keyCode = AppSettings.shared.switcherTriggerKeyCode
+        switcherTriggerKeyButton.title = Self.displayName(for: keyCode)
+    }
+
     @objc private func syncShortcutSelection() {
         let shortcut = AppSettings.shared.switcherShortcut
         if let index = SwitcherShortcut.allCases.firstIndex(of: shortcut) {
             shortcutPopup.selectItem(at: index)
         }
+    }
+
+    private func stopTriggerKeyCapture() {
+        if let triggerKeyCaptureMonitor {
+            NSEvent.removeMonitor(triggerKeyCaptureMonitor)
+            self.triggerKeyCaptureMonitor = nil
+        }
+    }
+
+    private static func isModifierKey(_ keyCode: UInt16) -> Bool {
+        [54, 55, 56, 58, 59, 60, 61, 62, 63].contains(Int(keyCode))
+    }
+
+    private static func displayName(for keyCode: Int64) -> String {
+        switch keyCode {
+        case 36: return "↩"
+        case 48: return "⇥"
+        case 49: return "Space"
+        case 51: return "⌫"
+        case 53: return "⎋"
+        case 123: return "←"
+        case 124: return "→"
+        case 125: return "↓"
+        case 126: return "↑"
+        default:
+            if let scalar = unicodeScalarForANSIKeyCode(keyCode) {
+                return String(scalar).uppercased()
+            }
+            return "Key \(keyCode)"
+        }
+    }
+
+    private static func unicodeScalarForANSIKeyCode(_ keyCode: Int64) -> UnicodeScalar? {
+        let map: [Int64: UnicodeScalar] = [
+            0: "a", 1: "s", 2: "d", 3: "f", 4: "h", 5: "g", 6: "z", 7: "x", 8: "c", 9: "v",
+            11: "b", 12: "q", 13: "w", 14: "e", 15: "r", 16: "y", 17: "t",
+            18: "1", 19: "2", 20: "3", 21: "4", 22: "6", 23: "5", 24: "=", 25: "9", 26: "7",
+            27: "-", 28: "8", 29: "0", 30: "]", 31: "o", 32: "u", 33: "[", 34: "i", 35: "p",
+            37: "l", 38: "j", 39: "'", 40: "k", 41: ";", 42: "\\", 43: ",", 44: "/", 45: "n",
+            46: "m", 47: ".", 50: "`",
+        ]
+        return map[keyCode]
     }
 
     @objc private func openAccessibilitySettings() {
@@ -1449,6 +1774,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func windowWillClose(_ notification: Notification) {
+        stopTriggerKeyCapture()
         shouldRestoreAfterSystemSettings = false
         wasSuppressedForSwitcher = false
         NSApp.setActivationPolicy(.accessory)

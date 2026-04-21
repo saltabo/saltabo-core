@@ -168,14 +168,7 @@ final class AccessibilityService {
     }
 
     func raiseWindow(matching descriptor: WindowDescriptor) -> Bool {
-        let candidates = windows(for: descriptor.pid).compactMap { window -> (AXUIElement, CGFloat)? in
-            let title = stringValue(for: kAXTitleAttribute, on: window) ?? ""
-            let frame = frame(for: window) ?? .zero
-            let score = windowMatchScore(title: title, frame: frame, descriptor: descriptor)
-            return score > 0 ? (window, score) : nil
-        }
-
-        guard let bestWindow = candidates.max(by: { $0.1 < $1.1 })?.0 else {
+        guard let bestWindow = bestMatchingWindow(for: descriptor) else {
             return false
         }
 
@@ -185,6 +178,58 @@ final class AccessibilityService {
         _ = AXUIElementSetAttributeValue(
             bestWindow, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
         return AXUIElementPerformAction(bestWindow, kAXRaiseAction as CFString) == .success
+    }
+
+    func isWindowMinimized(matching descriptor: WindowDescriptor) -> Bool {
+        guard let bestWindow = bestMatchingWindow(for: descriptor) else {
+            return false
+        }
+        return booleanValue(for: kAXMinimizedAttribute, on: bestWindow) ?? false
+    }
+
+    func isWindowFullscreen(matching descriptor: WindowDescriptor) -> Bool {
+        if let bestWindow = bestMatchingWindow(for: descriptor) {
+            if booleanValue(for: "AXFullScreen", on: bestWindow) ?? false {
+                return true
+            }
+        }
+
+        // Fallback: some apps report unstable titles/frames for fullscreen windows,
+        // so the best-match lookup can fail. Scan all app windows and match by overlap.
+        let candidates = windows(for: descriptor.pid)
+        for window in candidates {
+            guard (booleanValue(for: "AXFullScreen", on: window) ?? false) else { continue }
+            guard let frame = frame(for: window) else { continue }
+            if overlapRatio(between: frame, and: descriptor.bounds) >= 0.55 {
+                return true
+            }
+        }
+        return false
+    }
+
+    func fullscreenWindowFrames(for pid: pid_t) -> [CGRect] {
+        windows(for: pid).compactMap { window in
+            guard (booleanValue(for: "AXFullScreen", on: window) ?? false) else { return nil }
+            return frame(for: window)
+        }
+    }
+
+    private func overlapRatio(between lhs: CGRect, and rhs: CGRect) -> CGFloat {
+        let intersection = lhs.intersection(rhs)
+        guard !intersection.isNull else { return 0 }
+        let overlap = intersection.width * intersection.height
+        let base = max(lhs.width * lhs.height, rhs.width * rhs.height, 1)
+        return overlap / base
+    }
+
+    private func bestMatchingWindow(for descriptor: WindowDescriptor) -> AXUIElement? {
+        let candidates = windows(for: descriptor.pid).compactMap { window -> (AXUIElement, CGFloat)? in
+            let title = stringValue(for: kAXTitleAttribute, on: window) ?? ""
+            let frame = frame(for: window) ?? .zero
+            let score = windowMatchScore(title: title, frame: frame, descriptor: descriptor)
+            return score > 0 ? (window, score) : nil
+        }
+        return candidates.max(by: { $0.1 < $1.1 })?.0
     }
 
     private func windowMatchScore(title: String, frame: CGRect, descriptor: WindowDescriptor) -> CGFloat {

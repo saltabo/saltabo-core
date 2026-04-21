@@ -7,6 +7,7 @@ struct WindowDescriptor: Identifiable, Hashable {
     let appName: String
     let title: String
     let bounds: CGRect
+    let isOnScreen: Bool
     let windowLayer: Int
     let orderIndex: Int
 
