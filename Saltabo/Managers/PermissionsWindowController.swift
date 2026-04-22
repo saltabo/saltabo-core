@@ -181,6 +181,7 @@ final class PermissionsWindowController: NSWindowController, NSWindowDelegate {
 
     private var onContinue: (() -> Void)?
     private var didContinue = false
+    private var shouldTerminateIfIncompleteOnClose = true
 
     private init() {
         let window = NSWindow(
@@ -229,6 +230,7 @@ final class PermissionsWindowController: NSWindowController, NSWindowDelegate {
 
         self.onContinue = onContinue
         self.didContinue = false
+        self.shouldTerminateIfIncompleteOnClose = true
         refreshStatus()
         NSApp.setActivationPolicy(.regular)
         showWindow(nil)
@@ -236,6 +238,22 @@ final class PermissionsWindowController: NSWindowController, NSWindowDelegate {
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         return true
+    }
+
+    func presentForManualCheck() {
+        let snapshot = AccessibilityService.shared.currentPermissionSnapshot()
+        if !snapshot.screenRecordingGranted {
+            _ = AccessibilityService.shared.requestScreenRecordingPermission()
+        }
+        self.onContinue = nil
+        self.didContinue = false
+        self.shouldTerminateIfIncompleteOnClose = false
+        refreshStatus()
+        NSApp.setActivationPolicy(.regular)
+        showWindow(nil)
+        window?.center()
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     private func buildContentView() -> NSView {
@@ -320,17 +338,20 @@ final class PermissionsWindowController: NSWindowController, NSWindowDelegate {
             granted: snapshot.screenRecordingGranted,
             required: true
         )
-        if snapshot.accessibilityGranted && snapshot.screenRecordingGranted && !didContinue {
+        if snapshot.accessibilityGranted && snapshot.screenRecordingGranted && !didContinue,
+           let onContinue
+        {
             didContinue = true
             window?.orderOut(nil)
             NSApp.setActivationPolicy(.accessory)
-            onContinue?()
-            onContinue = nil
+            onContinue()
+            self.onContinue = nil
         }
     }
 
     func windowWillClose(_ notification: Notification) {
         guard !didContinue else { return }
+        guard shouldTerminateIfIncompleteOnClose else { return }
         let snapshot = AccessibilityService.shared.currentPermissionSnapshot()
         if !(snapshot.accessibilityGranted && snapshot.screenRecordingGranted) {
             NSApp.terminate(nil)

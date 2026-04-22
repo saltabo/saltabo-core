@@ -45,13 +45,21 @@ final class MenuBarManager: NSObject {
         item.button?.toolTip = "Saltabo"
 
         let menu = NSMenu()
-        menu.addItem(
-            NSMenuItem(
-                title: "Check for Updates...",
-                action: #selector(checkForUpdates),
-                keyEquivalent: ""
-            ))
-        menu.addItem(NSMenuItem.separator())
+        let checkUpdatesItem = NSMenuItem(
+            title: "Check for updates...",
+            action: #selector(checkForUpdates),
+            keyEquivalent: ""
+        )
+        checkUpdatesItem.image = menuSymbol(named: "arrow.clockwise")
+        menu.addItem(checkUpdatesItem)
+
+        let checkPermissionsItem = NSMenuItem(
+            title: "Check permissions...",
+            action: #selector(checkPermissions),
+            keyEquivalent: ""
+        )
+        checkPermissionsItem.image = menuSymbol(named: "hand.raised")
+        menu.addItem(checkPermissionsItem)
         menu.addItem(
             NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ","))
         menu.addItem(NSMenuItem.separator())
@@ -64,6 +72,14 @@ final class MenuBarManager: NSObject {
 
         item.menu = menu
         statusItem = item
+    }
+
+    private func menuSymbol(named symbolName: String) -> NSImage? {
+        let base = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)
+        let configured = base?.withSymbolConfiguration(
+            NSImage.SymbolConfiguration(pointSize: 12, weight: .regular))
+        configured?.isTemplate = true
+        return configured
     }
 
     private func removeStatusItem() {
@@ -123,6 +139,10 @@ final class MenuBarManager: NSObject {
 
     @objc private func checkForUpdates() {
         UpdateChecker.shared.checkForUpdates()
+    }
+
+    @objc private func checkPermissions() {
+        PermissionsWindowController.shared.presentForManualCheck()
     }
 
     @objc private func quit() {
