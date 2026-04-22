@@ -2185,10 +2185,27 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     @objc private func resetSettingsAndRestart() {
         let alert = NSAlert()
-        alert.alertStyle = .informational
-        alert.messageText = "Reset settings is not implemented yet."
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
+        alert.alertStyle = .warning
+        alert.messageText = "Reset all settings?"
+        alert.informativeText =
+            "This will restore Saltabo settings to defaults and restart the app."
+        alert.addButton(withTitle: "Reset & Restart")
+        alert.addButton(withTitle: "Cancel")
+
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        if #available(macOS 13.0, *) {
+            try? SMAppService.mainApp.unregister()
+        }
+        AppSettings.shared.resetAll()
+
+        let appURL = Bundle.main.bundleURL
+        NSWorkspace.shared.openApplication(at: appURL, configuration: NSWorkspace.OpenConfiguration()) {
+            _, _ in
+            DispatchQueue.main.async {
+                NSApp.terminate(nil)
+            }
+        }
     }
 
     private func rebuildPermissionRows() {

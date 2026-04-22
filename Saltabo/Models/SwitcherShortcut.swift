@@ -537,4 +537,10 @@ final class AppSettings {
             defaults.set(newValue, forKey: Keys.suppressMoveToApplicationsPrompt)
         }
     }
+
+    func resetAll() {
+        guard let bundleID = Bundle.main.bundleIdentifier else { return }
+        defaults.removePersistentDomain(forName: bundleID)
+        defaults.synchronize()
+    }
 }
