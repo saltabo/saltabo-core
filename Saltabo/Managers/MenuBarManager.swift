@@ -6,12 +6,41 @@ final class MenuBarManager: NSObject {
     private var statusItem: NSStatusItem?
 
     func setup() {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        if let icon = NSApp.applicationIconImage.copy() as? NSImage {
-            icon.size = NSSize(width: 24, height: 24)
-            icon.isTemplate = false
-            item.button?.image = icon
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleMenubarIconStyleChange),
+            name: .menubarIconStyleDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleMenubarIconVisibilityChange),
+            name: .menubarIconVisibilityDidChange,
+            object: nil
+        )
+        applyMenubarVisibility()
+    }
+
+    @objc private func handleMenubarIconStyleChange() {
+        applyMenubarIcon()
+    }
+
+    @objc private func handleMenubarIconVisibilityChange() {
+        applyMenubarVisibility()
+    }
+
+    private func applyMenubarVisibility() {
+        if AppSettings.shared.menubarIconVisible {
+            ensureStatusItem()
+            applyMenubarIcon()
+        } else {
+            removeStatusItem()
         }
+    }
+
+    private func ensureStatusItem() {
+        guard statusItem == nil else { return }
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.imagePosition = .imageOnly
         item.button?.toolTip = "Saltabo"
 
@@ -35,6 +64,38 @@ final class MenuBarManager: NSObject {
 
         item.menu = menu
         statusItem = item
+    }
+
+    private func removeStatusItem() {
+        if let statusItem {
+            NSStatusBar.system.removeStatusItem(statusItem)
+            self.statusItem = nil
+        }
+    }
+
+    private func applyMenubarIcon() {
+        guard let button = statusItem?.button else { return }
+        button.image = menubarImage(for: AppSettings.shared.menubarIconStyle)
+    }
+
+    private func menubarImage(for style: MenubarIconStyle) -> NSImage? {
+        let source: NSImage?
+        switch style {
+        case .default:
+            source =
+                NSImage(named: "ApplicationIcon256")
+                ?? (NSApp.applicationIconImage.copy() as? NSImage)
+                ?? NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath)
+        case .minimal:
+            source = NSImage(named: "MenubarIconMinimal")
+        case .classic:
+            source = NSImage(named: "MenubarIconClassic")
+        }
+        guard let source else { return nil }
+        let icon = source.copy() as? NSImage ?? source
+        icon.size = NSSize(width: 18, height: 18)
+        icon.isTemplate = false
+        return icon
     }
 
     @objc private func openSwitcher() {

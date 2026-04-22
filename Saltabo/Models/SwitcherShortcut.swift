@@ -58,6 +58,29 @@ enum SwitcherOrderPreference: String, CaseIterable {
     case nameZA
 }
 
+enum MenubarIconStyle: String, CaseIterable {
+    case `default`
+    case minimal
+    case classic
+}
+
+enum AppLanguage: String, CaseIterable {
+    case system
+    case english
+    case vietnamese
+}
+
+enum UpdateCheckPolicy: String, CaseIterable {
+    case periodically
+    case manuallyOnly
+}
+
+enum CrashReportsPolicy: String, CaseIterable {
+    case ask
+    case always
+    case never
+}
+
 enum SwitcherShortcut: String, CaseIterable {
     case commandTab
     case optionTab
@@ -134,6 +157,12 @@ extension Notification.Name {
         "Saltabo.switcherFullscreenWindowsVisibilityDidChange")
     static let switcherOrderPreferenceDidChange = Notification.Name(
         "Saltabo.switcherOrderPreferenceDidChange")
+    static let menubarIconStyleDidChange = Notification.Name("Saltabo.menubarIconStyleDidChange")
+    static let menubarIconVisibilityDidChange = Notification.Name(
+        "Saltabo.menubarIconVisibilityDidChange")
+    static let appLanguageDidChange = Notification.Name("Saltabo.appLanguageDidChange")
+    static let updateCheckPolicyDidChange = Notification.Name("Saltabo.updateCheckPolicyDidChange")
+    static let crashReportsPolicyDidChange = Notification.Name("Saltabo.crashReportsPolicyDidChange")
     static let switcherAvailabilityDidChange = Notification.Name(
         "Saltabo.switcherAvailabilityDidChange")
 }
@@ -155,6 +184,13 @@ final class AppSettings {
         static let switcherHiddenWindowsVisibility = "Saltabo.switcherHiddenWindowsVisibility"
         static let switcherFullscreenWindowsVisibility = "Saltabo.switcherFullscreenWindowsVisibility"
         static let switcherOrderPreference = "Saltabo.switcherOrderPreference"
+        static let startAtLoginEnabled = "Saltabo.startAtLoginEnabled"
+        static let menubarIconStyle = "Saltabo.menubarIconStyle"
+        static let menubarIconVisible = "Saltabo.menubarIconVisible"
+        static let captureWindowsInBackground = "Saltabo.captureWindowsInBackground"
+        static let appLanguage = "Saltabo.appLanguage"
+        static let updateCheckPolicy = "Saltabo.updateCheckPolicy"
+        static let crashReportsPolicy = "Saltabo.crashReportsPolicy"
         static let suppressMoveToApplicationsPrompt = "Saltabo.suppressMoveToApplicationsPrompt"
     }
 
@@ -387,6 +423,109 @@ final class AppSettings {
                 name: .switcherOrderPreferenceDidChange,
                 object: newValue
             )
+        }
+    }
+
+    var startAtLoginEnabled: Bool {
+        get {
+            defaults.bool(forKey: Keys.startAtLoginEnabled)
+        }
+        set {
+            defaults.set(newValue, forKey: Keys.startAtLoginEnabled)
+        }
+    }
+
+    var menubarIconStyle: MenubarIconStyle {
+        get {
+            guard
+                let raw = defaults.string(forKey: Keys.menubarIconStyle),
+                let style = MenubarIconStyle(rawValue: raw)
+            else {
+                return .default
+            }
+            return style
+        }
+        set {
+            guard newValue != menubarIconStyle else { return }
+            defaults.set(newValue.rawValue, forKey: Keys.menubarIconStyle)
+            NotificationCenter.default.post(name: .menubarIconStyleDidChange, object: newValue)
+        }
+    }
+
+    var menubarIconVisible: Bool {
+        get {
+            if defaults.object(forKey: Keys.menubarIconVisible) == nil {
+                return true
+            }
+            return defaults.bool(forKey: Keys.menubarIconVisible)
+        }
+        set {
+            guard newValue != menubarIconVisible else { return }
+            defaults.set(newValue, forKey: Keys.menubarIconVisible)
+            NotificationCenter.default.post(name: .menubarIconVisibilityDidChange, object: newValue)
+        }
+    }
+
+    var captureWindowsInBackground: Bool {
+        get {
+            if defaults.object(forKey: Keys.captureWindowsInBackground) == nil {
+                return true
+            }
+            return defaults.bool(forKey: Keys.captureWindowsInBackground)
+        }
+        set {
+            defaults.set(newValue, forKey: Keys.captureWindowsInBackground)
+        }
+    }
+
+    var appLanguage: AppLanguage {
+        get {
+            guard
+                let raw = defaults.string(forKey: Keys.appLanguage),
+                let language = AppLanguage(rawValue: raw)
+            else {
+                return .system
+            }
+            return language
+        }
+        set {
+            guard newValue != appLanguage else { return }
+            defaults.set(newValue.rawValue, forKey: Keys.appLanguage)
+            NotificationCenter.default.post(name: .appLanguageDidChange, object: newValue)
+        }
+    }
+
+    var updateCheckPolicy: UpdateCheckPolicy {
+        get {
+            guard
+                let raw = defaults.string(forKey: Keys.updateCheckPolicy),
+                let policy = UpdateCheckPolicy(rawValue: raw)
+            else {
+                return .periodically
+            }
+            return policy
+        }
+        set {
+            guard newValue != updateCheckPolicy else { return }
+            defaults.set(newValue.rawValue, forKey: Keys.updateCheckPolicy)
+            NotificationCenter.default.post(name: .updateCheckPolicyDidChange, object: newValue)
+        }
+    }
+
+    var crashReportsPolicy: CrashReportsPolicy {
+        get {
+            guard
+                let raw = defaults.string(forKey: Keys.crashReportsPolicy),
+                let policy = CrashReportsPolicy(rawValue: raw)
+            else {
+                return .ask
+            }
+            return policy
+        }
+        set {
+            guard newValue != crashReportsPolicy else { return }
+            defaults.set(newValue.rawValue, forKey: Keys.crashReportsPolicy)
+            NotificationCenter.default.post(name: .crashReportsPolicyDidChange, object: newValue)
         }
     }
 

@@ -36,6 +36,7 @@ final class SaltaboApp: NSObject, NSApplicationDelegate {
         hasStartedServices = true
 
         MenuBarManager.shared.setup()
+        UpdateChecker.shared.startAutomaticChecksIfNeeded()
         appSwitcherManager.start()
         dockPreviewManager.start()
 

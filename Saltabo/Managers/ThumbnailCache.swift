@@ -15,6 +15,10 @@ final class ThumbnailCache {
             return cached
         }
 
+        guard AppSettings.shared.captureWindowsInBackground else {
+            return nil
+        }
+
         guard let raw = Self.capture(windowID: window.id) else { return nil }
         let image = NSImage(cgImage: raw, size: targetSize)
         cache.setObject(image, forKey: key as NSString)
@@ -22,6 +26,7 @@ final class ThumbnailCache {
     }
 
     func warm(_ windows: [WindowDescriptor], targetSize: NSSize) {
+        guard AppSettings.shared.captureWindowsInBackground else { return }
         windows.forEach { window in
             queue.async { [weak self] in
                 _ = self?.image(for: window, targetSize: targetSize)

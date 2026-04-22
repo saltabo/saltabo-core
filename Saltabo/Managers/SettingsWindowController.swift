@@ -1,4 +1,5 @@
 import AppKit
+import ServiceManagement
 
 private final class BadgeStatusView: NSView {
     private let label = NSTextField(labelWithString: "")
@@ -46,12 +47,22 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         case general
         case permissions
 
-        var title: String {
+        var id: String {
             switch self {
-            case .appearance: return "Appearance"
-            case .controls: return "Controls"
-            case .general: return "General"
-            case .permissions: return "Permissions"
+            case .appearance: return "appearance"
+            case .controls: return "controls"
+            case .general: return "general"
+            case .permissions: return "permissions"
+            }
+        }
+
+        var title: String {
+            let isVietnamese = AppSettings.shared.appLanguage == .vietnamese
+            switch self {
+            case .appearance: return isVietnamese ? "Giao diện" : "Appearance"
+            case .controls: return isVietnamese ? "Điều khiển" : "Controls"
+            case .general: return isVietnamese ? "Chung" : "General"
+            case .permissions: return isVietnamese ? "Quyền truy cập" : "Permissions"
             }
         }
 
@@ -72,6 +83,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let switcherHiddenWindowsPopup = NSPopUpButton()
     private let switcherFullscreenWindowsPopup = NSPopUpButton()
     private let switcherOrderPreferencePopup = NSPopUpButton()
+    private let startAtLoginToggle = NSSwitch()
+    private let menubarIconPopup = NSPopUpButton()
+    private let menubarIconVisibleToggle = NSSwitch()
+    private let captureWindowsInBackgroundToggle = NSSwitch()
+    private let appLanguagePopup = NSPopUpButton()
+    private let updatesPolicyPopup = NSPopUpButton()
+    private let crashReportsPolicyPopup = NSPopUpButton()
     private let switcherTriggerKeyButton = NSButton()
     private let switcherSizeControl = NSSegmentedControl()
     private let switcherThemeControl = NSSegmentedControl()
@@ -102,7 +120,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
         super.init(window: window)
 
-        window.title = "Settings"
+        window.title = localized("Settings")
         window.center()
         window.isReleasedWhenClosed = false
         window.level = .normal
@@ -207,6 +225,24 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             name: .switcherOrderPreferenceDidChange,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(syncMenubarIconStyleSelection),
+            name: .menubarIconStyleDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(syncMenubarIconVisibilitySelection),
+            name: .menubarIconVisibilityDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAppLanguageChanged),
+            name: .appLanguageDidChange,
+            object: nil
+        )
         NSWorkspace.shared.notificationCenter.addObserver(
             self,
             selector: #selector(handleWorkspaceAppDeactivation(_:)),
@@ -226,6 +262,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         syncSwitcherHiddenWindowsSelection()
         syncSwitcherFullscreenWindowsSelection()
         syncSwitcherOrderPreferenceSelection()
+        syncStartAtLoginSelection()
+        syncMenubarIconStyleSelection()
+        syncMenubarIconVisibilitySelection()
+        syncCaptureWindowsInBackgroundSelection()
+        syncAppLanguageSelection()
+        syncUpdatesPolicySelection()
+        syncCrashReportsPolicySelection()
         refreshPermissionState()
     }
 
@@ -246,6 +289,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         syncSwitcherHiddenWindowsSelection()
         syncSwitcherFullscreenWindowsSelection()
         syncSwitcherOrderPreferenceSelection()
+        syncStartAtLoginSelection()
+        syncMenubarIconStyleSelection()
+        syncMenubarIconVisibilitySelection()
+        syncCaptureWindowsInBackgroundSelection()
+        syncAppLanguageSelection()
+        syncUpdatesPolicySelection()
+        syncCrashReportsPolicySelection()
         refreshSwitcherStyleTileSelection()
         refreshPermissionState()
         NSApp.setActivationPolicy(.regular)
@@ -334,6 +384,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         tabStack.alignment = .leading
         tabStack.spacing = 4
         tabStack.translatesAutoresizingMaskIntoConstraints = false
+        tabStack.arrangedSubviews.forEach { view in
+            tabStack.removeArrangedSubview(view)
+            view.removeFromSuperview()
+        }
 
         SettingsTab.allCases.forEach { tab in
             let button = makeTabButton(tab: tab)
@@ -345,6 +399,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         }
 
         contentHostView.translatesAutoresizingMaskIntoConstraints = false
+        contentHostView.subviews.forEach { $0.removeFromSuperview() }
 
         let appearanceTabView = buildAppearanceTabView()
         let controlsTabView = buildControlsTabView()
@@ -363,7 +418,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                 $0.bottomAnchor.constraint(equalTo: contentHostView.bottomAnchor),
             ])
         }
-        activateTab(.appearance)
+        activateTab(activeTab)
 
         sidebar.addSubview(navigatorOutline)
         navigatorOutline.addSubview(tabStack)
@@ -483,7 +538,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let root = NSView()
         root.translatesAutoresizingMaskIntoConstraints = false
 
-        container.addArrangedSubview(makeSectionTitle("Appearance"))
+        container.addArrangedSubview(makeSectionTitle(localized("Appearance")))
         container.addArrangedSubview(
             makeSectionNote("Switch between different styles. You can customize them."))
         container.addArrangedSubview(makeStylePreviewRow())
@@ -511,7 +566,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let root = NSView()
         root.translatesAutoresizingMaskIntoConstraints = false
 
-        container.addArrangedSubview(makeSectionTitle("Controls"))
+        container.addArrangedSubview(makeSectionTitle(localized("Controls")))
         container.addArrangedSubview(makeControlsTriggerCard())
         container.addArrangedSubview(makeControlsSettingsCard())
 
@@ -620,37 +675,37 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
         stack.addArrangedSubview(
             makeControlsOptionRow(
-                title: "Show windows from applications",
+                title: localized("Show windows from applications"),
                 control: makeSwitcherApplicationScopePopup()
             ))
         stack.addArrangedSubview(makeDivider())
         stack.addArrangedSubview(
             makeControlsOptionRow(
-                title: "Show windows from screens",
+                title: localized("Show windows from screens"),
                 control: makeSwitcherScreenScopePopup()
             ))
         stack.addArrangedSubview(makeDivider())
         stack.addArrangedSubview(
             makeControlsOptionRow(
-                title: "Show minimized windows",
+                title: localized("Show minimized windows"),
                 control: makeSwitcherMinimizedWindowsPopup()
             ))
         stack.addArrangedSubview(makeDivider())
         stack.addArrangedSubview(
             makeControlsOptionRow(
-                title: "Show hidden windows",
+                title: localized("Show hidden windows"),
                 control: makeSwitcherHiddenWindowsPopup()
             ))
         stack.addArrangedSubview(makeDivider())
         stack.addArrangedSubview(
             makeControlsOptionRow(
-                title: "Show fullscreen windows",
+                title: localized("Show fullscreen windows"),
                 control: makeSwitcherFullscreenWindowsPopup()
             ))
         stack.addArrangedSubview(makeDivider())
         stack.addArrangedSubview(
             makeControlsOptionRow(
-                title: "Order windows by",
+                title: localized("Order windows by"),
                 control: makeSwitcherOrderPreferencePopup()
             ))
 
@@ -681,11 +736,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         switcherApplicationScopePopup.target = self
         switcherApplicationScopePopup.action = #selector(switcherApplicationScopeChanged(_:))
         switcherApplicationScopePopup.widthAnchor.constraint(equalToConstant: 126).isActive = true
-        if switcherApplicationScopePopup.numberOfItems == 0 {
-            switcherApplicationScopePopup.addItems(withTitles: [
-                "All apps", "Active app", "Non-active apps",
-            ])
-        }
+        switcherApplicationScopePopup.removeAllItems()
+        switcherApplicationScopePopup.addItems(withTitles: [
+            localized("All apps"), localized("Active app"), localized("Non-active apps"),
+        ])
         syncSwitcherApplicationScopeSelection()
         return switcherApplicationScopePopup
     }
@@ -696,9 +750,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         switcherScreenScopePopup.target = self
         switcherScreenScopePopup.action = #selector(switcherScreenScopeChanged(_:))
         switcherScreenScopePopup.widthAnchor.constraint(equalToConstant: 160).isActive = true
-        if switcherScreenScopePopup.numberOfItems == 0 {
-            switcherScreenScopePopup.addItems(withTitles: ["Current screen only", "All screens"])
-        }
+        switcherScreenScopePopup.removeAllItems()
+        switcherScreenScopePopup.addItems(withTitles: [
+            localized("Current screen only"), localized("All screens"),
+        ])
         syncSwitcherScreenScopeSelection()
         return switcherScreenScopePopup
     }
@@ -709,9 +764,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         switcherMinimizedWindowsPopup.target = self
         switcherMinimizedWindowsPopup.action = #selector(switcherMinimizedWindowsChanged(_:))
         switcherMinimizedWindowsPopup.widthAnchor.constraint(equalToConstant: 84).isActive = true
-        if switcherMinimizedWindowsPopup.numberOfItems == 0 {
-            switcherMinimizedWindowsPopup.addItems(withTitles: ["Show", "Hide"])
-        }
+        switcherMinimizedWindowsPopup.removeAllItems()
+        switcherMinimizedWindowsPopup.addItems(withTitles: [localized("Show"), localized("Hide")])
         syncSwitcherMinimizedWindowsSelection()
         return switcherMinimizedWindowsPopup
     }
@@ -722,9 +776,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         switcherHiddenWindowsPopup.target = self
         switcherHiddenWindowsPopup.action = #selector(switcherHiddenWindowsChanged(_:))
         switcherHiddenWindowsPopup.widthAnchor.constraint(equalToConstant: 84).isActive = true
-        if switcherHiddenWindowsPopup.numberOfItems == 0 {
-            switcherHiddenWindowsPopup.addItems(withTitles: ["Show", "Hide"])
-        }
+        switcherHiddenWindowsPopup.removeAllItems()
+        switcherHiddenWindowsPopup.addItems(withTitles: [localized("Show"), localized("Hide")])
         syncSwitcherHiddenWindowsSelection()
         return switcherHiddenWindowsPopup
     }
@@ -735,9 +788,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         switcherFullscreenWindowsPopup.target = self
         switcherFullscreenWindowsPopup.action = #selector(switcherFullscreenWindowsChanged(_:))
         switcherFullscreenWindowsPopup.widthAnchor.constraint(equalToConstant: 84).isActive = true
-        if switcherFullscreenWindowsPopup.numberOfItems == 0 {
-            switcherFullscreenWindowsPopup.addItems(withTitles: ["Show", "Hide"])
-        }
+        switcherFullscreenWindowsPopup.removeAllItems()
+        switcherFullscreenWindowsPopup.addItems(withTitles: [localized("Show"), localized("Hide")])
         syncSwitcherFullscreenWindowsSelection()
         return switcherFullscreenWindowsPopup
     }
@@ -748,13 +800,24 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         switcherOrderPreferencePopup.target = self
         switcherOrderPreferencePopup.action = #selector(switcherOrderPreferenceChanged(_:))
         switcherOrderPreferencePopup.widthAnchor.constraint(equalToConstant: 180).isActive = true
-        if switcherOrderPreferencePopup.numberOfItems == 0 {
-            switcherOrderPreferencePopup.addItems(withTitles: [
-                "Recently Focused First", "Recently Opened First", "Name A-z", "Name Z-a",
-            ])
-        }
+        switcherOrderPreferencePopup.removeAllItems()
+        switcherOrderPreferencePopup.addItems(withTitles: [
+            localized("Recently Focused First"),
+            localized("Recently Opened First"),
+            localized("Name A-z"),
+            localized("Name Z-a"),
+        ])
         syncSwitcherOrderPreferenceSelection()
         return switcherOrderPreferencePopup
+    }
+
+    private func makeStartAtLoginToggle() -> NSSwitch {
+        startAtLoginToggle.translatesAutoresizingMaskIntoConstraints = false
+        startAtLoginToggle.controlSize = .mini
+        startAtLoginToggle.target = self
+        startAtLoginToggle.action = #selector(startAtLoginChanged(_:))
+        syncStartAtLoginSelection()
+        return startAtLoginToggle
     }
 
     private func buildGeneralTabView() -> NSView {
@@ -767,7 +830,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let root = NSView()
         root.translatesAutoresizingMaskIntoConstraints = false
 
-        container.addArrangedSubview(makeSectionTitle("General"))
+        container.addArrangedSubview(makeSectionTitle(localized("General")))
         container.addArrangedSubview(makeGeneralPrimaryCard())
         container.addArrangedSubview(makeGeneralLanguageCard())
         container.addArrangedSubview(makeGeneralPoliciesCard())
@@ -794,8 +857,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
         stack.addArrangedSubview(
             makeAppearanceControlRow(
-                title: "Start at login",
-                control: makeAppearanceSwitch(isOn: true)
+                title: localized("Start at login"),
+                control: makeStartAtLoginToggle()
             )
         )
         stack.addArrangedSubview(makeDivider())
@@ -805,10 +868,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         stack.addArrangedSubview(makeDivider())
         stack.addArrangedSubview(
             makeGeneralDescriptionRow(
-                title: "Capture windows in the background",
+                title: localized("Capture windows in the background"),
                 description:
                     "When disabled, avoids the macOS purple screen-recording indicator, and avoids flickers when playing DRM video. Thumbnails will be less up-to-date.",
-                control: makeAppearanceSwitch(isOn: true)
+                control: makeCaptureWindowsInBackgroundToggle()
             )
         )
 
@@ -826,12 +889,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private func makeGeneralLanguageCard() -> NSView {
         let card = makeSettingsGroupCard(width: 610)
         let row = makeAppearanceControlRow(
-            title: "Language",
-            control: makeAppearancePopup(
-                titles: ["System Default", "English", "Vietnamese"],
-                selectedIndex: 0,
-                width: 140
-            )
+            title: localized("Language"),
+            control: makeAppLanguagePopup()
         )
 
         card.addSubview(row)
@@ -856,30 +915,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
         stack.addArrangedSubview(
             makeAppearanceControlRow(
-                title: "Updates policy",
-                control: makeAppearancePopup(
-                    titles: [
-                        "Check for updates periodically",
-                        "Check manually only",
-                    ],
-                    selectedIndex: 0,
-                    width: 220
-                )
+                title: localized("Updates policy"),
+                control: makeUpdatesPolicyPopup()
             )
         )
         stack.addArrangedSubview(makeDivider())
         stack.addArrangedSubview(
             makeAppearanceControlRow(
-                title: "Crash reports policy",
-                control: makeAppearancePopup(
-                    titles: [
-                        "Ask whether to send crash reports",
-                        "Always send crash reports",
-                        "Never send crash reports",
-                    ],
-                    selectedIndex: 0,
-                    width: 260
-                )
+                title: localized("Crash reports policy"),
+                control: makeCrashReportsPolicyPopup()
             )
         )
 
@@ -918,28 +962,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         titleLabel.font = .systemFont(ofSize: 13, weight: .regular)
         titleLabel.textColor = .labelColor
 
-        let iconPopup = makeAppearancePopup(
-            titles: ["", "", ""],
-            selectedIndex: 0,
-            width: 48
-        )
-        iconPopup.imagePosition = .imageOnly
-        iconPopup.setAccessibilityLabel("Menubar icon style")
-        if let iconItem = iconPopup.item(at: 0) {
-            let appSource =
-                NSImage(named: "ApplicationIcon256")
-                ?? (NSApp.applicationIconImage.copy() as? NSImage)
-                ?? NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath)
-            iconItem.image = sizedMenubarPopupItemImage(appSource)
-        }
-        if let item = iconPopup.item(at: 1), let asset = NSImage(named: "MenubarIconMinimal") {
-            item.image = sizedMenubarPopupItemImage(asset)
-        }
-        if let item = iconPopup.item(at: 2), let asset = NSImage(named: "MenubarIconClassic") {
-            item.image = sizedMenubarPopupItemImage(asset)
-        }
-
-        let toggle = makeAppearanceSwitch(isOn: true)
+        let iconPopup = makeMenubarIconPopup()
+        let toggle = makeMenubarIconVisibleToggle()
 
         row.addSubview(titleLabel)
         row.addSubview(iconPopup)
@@ -961,6 +985,101 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         ])
 
         return row
+    }
+
+    private func makeMenubarIconPopup() -> NSPopUpButton {
+        menubarIconPopup.translatesAutoresizingMaskIntoConstraints = false
+        menubarIconPopup.controlSize = .regular
+        menubarIconPopup.target = self
+        menubarIconPopup.action = #selector(menubarIconStyleChanged(_:))
+        menubarIconPopup.widthAnchor.constraint(equalToConstant: 48).isActive = true
+        if menubarIconPopup.numberOfItems == 0 {
+            menubarIconPopup.addItems(withTitles: ["", "", ""])
+            menubarIconPopup.imagePosition = .imageOnly
+            menubarIconPopup.setAccessibilityLabel("Menubar icon style")
+        }
+        if let iconItem = menubarIconPopup.item(at: 0) {
+            let appSource =
+                NSImage(named: "ApplicationIcon256")
+                ?? (NSApp.applicationIconImage.copy() as? NSImage)
+                ?? NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath)
+            iconItem.image = sizedMenubarPopupItemImage(appSource)
+        }
+        if let item = menubarIconPopup.item(at: 1), let asset = NSImage(named: "MenubarIconMinimal")
+        {
+            item.image = sizedMenubarPopupItemImage(asset)
+        }
+        if let item = menubarIconPopup.item(at: 2), let asset = NSImage(named: "MenubarIconClassic")
+        {
+            item.image = sizedMenubarPopupItemImage(asset)
+        }
+        syncMenubarIconStyleSelection()
+        return menubarIconPopup
+    }
+
+    private func makeMenubarIconVisibleToggle() -> NSSwitch {
+        menubarIconVisibleToggle.translatesAutoresizingMaskIntoConstraints = false
+        menubarIconVisibleToggle.controlSize = .mini
+        menubarIconVisibleToggle.target = self
+        menubarIconVisibleToggle.action = #selector(menubarIconVisibleChanged(_:))
+        syncMenubarIconVisibilitySelection()
+        return menubarIconVisibleToggle
+    }
+
+    private func makeCaptureWindowsInBackgroundToggle() -> NSSwitch {
+        captureWindowsInBackgroundToggle.translatesAutoresizingMaskIntoConstraints = false
+        captureWindowsInBackgroundToggle.controlSize = .mini
+        captureWindowsInBackgroundToggle.target = self
+        captureWindowsInBackgroundToggle.action = #selector(captureWindowsInBackgroundChanged(_:))
+        syncCaptureWindowsInBackgroundSelection()
+        return captureWindowsInBackgroundToggle
+    }
+
+    private func makeAppLanguagePopup() -> NSPopUpButton {
+        appLanguagePopup.translatesAutoresizingMaskIntoConstraints = false
+        appLanguagePopup.controlSize = .regular
+        appLanguagePopup.target = self
+        appLanguagePopup.action = #selector(appLanguageChanged(_:))
+        appLanguagePopup.widthAnchor.constraint(equalToConstant: 140).isActive = true
+        appLanguagePopup.removeAllItems()
+        appLanguagePopup.addItems(withTitles: [
+            localized("System Default"),
+            localized("English"),
+            localized("Vietnamese"),
+        ])
+        syncAppLanguageSelection()
+        return appLanguagePopup
+    }
+
+    private func makeUpdatesPolicyPopup() -> NSPopUpButton {
+        updatesPolicyPopup.translatesAutoresizingMaskIntoConstraints = false
+        updatesPolicyPopup.controlSize = .regular
+        updatesPolicyPopup.target = self
+        updatesPolicyPopup.action = #selector(updatesPolicyChanged(_:))
+        updatesPolicyPopup.widthAnchor.constraint(equalToConstant: 220).isActive = true
+        updatesPolicyPopup.removeAllItems()
+        updatesPolicyPopup.addItems(withTitles: [
+            localized("Check for updates periodically"),
+            localized("Check manually only"),
+        ])
+        syncUpdatesPolicySelection()
+        return updatesPolicyPopup
+    }
+
+    private func makeCrashReportsPolicyPopup() -> NSPopUpButton {
+        crashReportsPolicyPopup.translatesAutoresizingMaskIntoConstraints = false
+        crashReportsPolicyPopup.controlSize = .regular
+        crashReportsPolicyPopup.target = self
+        crashReportsPolicyPopup.action = #selector(crashReportsPolicyChanged(_:))
+        crashReportsPolicyPopup.widthAnchor.constraint(equalToConstant: 260).isActive = true
+        crashReportsPolicyPopup.removeAllItems()
+        crashReportsPolicyPopup.addItems(withTitles: [
+            localized("Ask whether to send crash reports"),
+            localized("Always send crash reports"),
+            localized("Never send crash reports"),
+        ])
+        syncCrashReportsPolicySelection()
+        return crashReportsPolicyPopup
     }
 
     private func makeGeneralDescriptionRow(
@@ -1027,7 +1146,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let root = NSView()
         root.translatesAutoresizingMaskIntoConstraints = false
 
-        container.addArrangedSubview(makeSectionTitle("Permissions"))
+        container.addArrangedSubview(makeSectionTitle(localized("Permissions")))
         permissionsStack.orientation = .vertical
         permissionsStack.alignment = .leading
         permissionsStack.spacing = 10
@@ -1057,7 +1176,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         button.isBordered = false
         button.alignment = .left
         button.font = .systemFont(ofSize: 13, weight: .medium)
-        button.identifier = NSUserInterfaceItemIdentifier(rawValue: tab.title)
+        button.identifier = NSUserInterfaceItemIdentifier(rawValue: tab.id)
         button.setButtonType(.momentaryPushIn)
         button.contentTintColor = .secondaryLabelColor
         button.image = makePaddedSymbolImage(tab.symbolName, leftInset: 8)
@@ -1102,7 +1221,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         else {
             return
         }
-        guard let tab = SettingsTab.allCases.first(where: { $0.title == identifier }) else {
+        guard let tab = SettingsTab.allCases.first(where: { $0.id == identifier }) else {
             return
         }
         activateTab(tab)
@@ -1232,28 +1351,28 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.addArrangedSubview(
             makeAppearanceControlRow(
-                title: "Size",
+                title: localized("Size"),
                 control: makeSwitcherSizeControl()
             )
         )
         stack.addArrangedSubview(makeDivider())
         stack.addArrangedSubview(
             makeAppearanceControlRow(
-                title: "Theme",
+                title: localized("Theme"),
                 control: makeSwitcherThemeControl()
             )
         )
         stack.addArrangedSubview(makeDivider())
         stack.addArrangedSubview(
             makeAppearanceControlRow(
-                title: "After keys are released",
+                title: localized("After keys are released"),
                 control: makeSwitcherReleaseActionPopup()
             )
         )
         stack.addArrangedSubview(makeDivider())
         stack.addArrangedSubview(
             makeAppearanceControlRow(
-                title: "Dock shows window previews",
+                title: localized("Dock shows window previews"),
                 control: makeSwitcherPreviewSelectedWindowToggle()
             )
         )
@@ -1324,11 +1443,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         switcherSizeControl.action = #selector(switcherSizeChanged(_:))
         if switcherSizeControl.segmentCount == 0 {
             switcherSizeControl.segmentCount = 4
-            switcherSizeControl.setLabel("Small", forSegment: 0)
-            switcherSizeControl.setLabel("Medium", forSegment: 1)
-            switcherSizeControl.setLabel("Large", forSegment: 2)
-            switcherSizeControl.setLabel("Auto", forSegment: 3)
         }
+        switcherSizeControl.setLabel(localized("Small"), forSegment: 0)
+        switcherSizeControl.setLabel(localized("Medium"), forSegment: 1)
+        switcherSizeControl.setLabel(localized("Large"), forSegment: 2)
+        switcherSizeControl.setLabel(localized("Auto"), forSegment: 3)
         syncSwitcherSizeSelection()
         return switcherSizeControl
     }
@@ -1363,10 +1482,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         switcherThemeControl.action = #selector(switcherThemeChanged(_:))
         if switcherThemeControl.segmentCount == 0 {
             switcherThemeControl.segmentCount = 3
-            switcherThemeControl.setLabel("Light", forSegment: 0)
-            switcherThemeControl.setLabel("Dark", forSegment: 1)
-            switcherThemeControl.setLabel("System", forSegment: 2)
         }
+        switcherThemeControl.setLabel(localized("Light"), forSegment: 0)
+        switcherThemeControl.setLabel(localized("Dark"), forSegment: 1)
+        switcherThemeControl.setLabel(localized("System"), forSegment: 2)
         syncSwitcherThemeSelection()
         return switcherThemeControl
     }
@@ -1377,9 +1496,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         switcherReleaseActionPopup.target = self
         switcherReleaseActionPopup.action = #selector(switcherReleaseActionChanged(_:))
         switcherReleaseActionPopup.widthAnchor.constraint(equalToConstant: 200).isActive = true
-        if switcherReleaseActionPopup.numberOfItems == 0 {
-            switcherReleaseActionPopup.addItems(withTitles: ["Focus selected window", "Keep Open"])
-        }
+        switcherReleaseActionPopup.removeAllItems()
+        switcherReleaseActionPopup.addItems(withTitles: [
+            localized("Focus selected window"),
+            localized("Keep Open"),
+        ])
         syncSwitcherReleaseActionSelection()
         return switcherReleaseActionPopup
     }
@@ -1469,6 +1590,79 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         AppSettings.shared.switcherOrderPreference = preference
     }
 
+    @objc private func startAtLoginChanged(_ sender: NSSwitch) {
+        let desiredEnabled = sender.state == .on
+        if applyStartAtLoginRegistration(enabled: desiredEnabled) {
+            AppSettings.shared.startAtLoginEnabled = desiredEnabled
+        } else {
+            syncStartAtLoginSelection()
+        }
+    }
+
+    @objc private func menubarIconStyleChanged(_ sender: NSPopUpButton) {
+        let style: MenubarIconStyle
+        switch sender.indexOfSelectedItem {
+        case 1:
+            style = .minimal
+        case 2:
+            style = .classic
+        default:
+            style = .default
+        }
+        AppSettings.shared.menubarIconStyle = style
+    }
+
+    @objc private func menubarIconVisibleChanged(_ sender: NSSwitch) {
+        let desiredVisible = sender.state == .on
+        if !desiredVisible, NSApp.activationPolicy() == .accessory {
+            let alert = NSAlert()
+            alert.alertStyle = .informational
+            alert.messageText = "Menubar icon is required."
+            alert.informativeText =
+                "Saltabo is running as a menu bar app, so the icon cannot be hidden."
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+            syncMenubarIconVisibilitySelection()
+            return
+        }
+        AppSettings.shared.menubarIconVisible = desiredVisible
+    }
+
+    @objc private func captureWindowsInBackgroundChanged(_ sender: NSSwitch) {
+        AppSettings.shared.captureWindowsInBackground = sender.state == .on
+    }
+
+    @objc private func appLanguageChanged(_ sender: NSPopUpButton) {
+        let selectedLanguage: AppLanguage
+        switch sender.indexOfSelectedItem {
+        case 1:
+            selectedLanguage = .english
+        case 2:
+            selectedLanguage = .vietnamese
+        default:
+            selectedLanguage = .system
+        }
+        AppSettings.shared.appLanguage = selectedLanguage
+    }
+
+    @objc private func updatesPolicyChanged(_ sender: NSPopUpButton) {
+        let policy: UpdateCheckPolicy = sender.indexOfSelectedItem == 1 ? .manuallyOnly : .periodically
+        AppSettings.shared.updateCheckPolicy = policy
+    }
+
+    @objc private func crashReportsPolicyChanged(_ sender: NSPopUpButton) {
+        let policy: CrashReportsPolicy
+        switch sender.indexOfSelectedItem {
+        case 1:
+            policy = .always
+        case 2:
+            policy = .never
+        default:
+            policy = .ask
+        }
+        AppSettings.shared.crashReportsPolicy = policy
+    }
+
     @objc private func syncSwitcherThemeSelection() {
         let selectedSegment: Int
         switch AppSettings.shared.switcherThemePreset {
@@ -1550,6 +1744,179 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             switcherOrderPreferencePopup.selectItem(at: 2)
         case .nameZA:
             switcherOrderPreferencePopup.selectItem(at: 3)
+        }
+    }
+
+    @objc private func syncStartAtLoginSelection() {
+        startAtLoginToggle.state = currentStartAtLoginEnabled() ? .on : .off
+    }
+
+    @objc private func syncMenubarIconStyleSelection() {
+        switch AppSettings.shared.menubarIconStyle {
+        case .default:
+            menubarIconPopup.selectItem(at: 0)
+        case .minimal:
+            menubarIconPopup.selectItem(at: 1)
+        case .classic:
+            menubarIconPopup.selectItem(at: 2)
+        }
+    }
+
+    @objc private func syncMenubarIconVisibilitySelection() {
+        menubarIconVisibleToggle.state = AppSettings.shared.menubarIconVisible ? .on : .off
+    }
+
+    @objc private func syncCaptureWindowsInBackgroundSelection() {
+        captureWindowsInBackgroundToggle.state =
+            AppSettings.shared.captureWindowsInBackground ? .on : .off
+    }
+
+    @objc private func syncAppLanguageSelection() {
+        switch AppSettings.shared.appLanguage {
+        case .system:
+            appLanguagePopup.selectItem(at: 0)
+        case .english:
+            appLanguagePopup.selectItem(at: 1)
+        case .vietnamese:
+            appLanguagePopup.selectItem(at: 2)
+        }
+    }
+
+    @objc private func syncUpdatesPolicySelection() {
+        switch AppSettings.shared.updateCheckPolicy {
+        case .periodically:
+            updatesPolicyPopup.selectItem(at: 0)
+        case .manuallyOnly:
+            updatesPolicyPopup.selectItem(at: 1)
+        }
+    }
+
+    @objc private func syncCrashReportsPolicySelection() {
+        switch AppSettings.shared.crashReportsPolicy {
+        case .ask:
+            crashReportsPolicyPopup.selectItem(at: 0)
+        case .always:
+            crashReportsPolicyPopup.selectItem(at: 1)
+        case .never:
+            crashReportsPolicyPopup.selectItem(at: 2)
+        }
+    }
+
+    @objc private func handleAppLanguageChanged() {
+        rebuildLocalizedUI()
+    }
+
+    private func rebuildLocalizedUI() {
+        guard let window else { return }
+        window.title = localized("Settings")
+        tabButtons.removeAll()
+        tabViews.removeAll()
+        window.contentView = buildContentView()
+        activateTab(activeTab)
+        layoutTrafficButtons()
+        syncShortcutSelection()
+        syncSwitcherTriggerKeyButtonTitle()
+        syncSwitcherSizeSelection()
+        syncSwitcherThemeSelection()
+        syncSwitcherReleaseActionSelection()
+        syncSwitcherPreviewSelectedWindowSelection()
+        syncSwitcherApplicationScopeSelection()
+        syncSwitcherScreenScopeSelection()
+        syncSwitcherMinimizedWindowsSelection()
+        syncSwitcherHiddenWindowsSelection()
+        syncSwitcherFullscreenWindowsSelection()
+        syncSwitcherOrderPreferenceSelection()
+        syncStartAtLoginSelection()
+        syncMenubarIconStyleSelection()
+        syncMenubarIconVisibilitySelection()
+        syncCaptureWindowsInBackgroundSelection()
+        syncAppLanguageSelection()
+        syncUpdatesPolicySelection()
+        syncCrashReportsPolicySelection()
+        refreshPermissionState()
+    }
+
+    private func localized(_ text: String) -> String {
+        guard AppSettings.shared.appLanguage == .vietnamese else { return text }
+        let translations: [String: String] = [
+            "Settings": "Cài đặt",
+            "Appearance": "Giao diện",
+            "Controls": "Điều khiển",
+            "General": "Chung",
+            "Permissions": "Quyền truy cập",
+            "Size": "Kích thước",
+            "Theme": "Chủ đề",
+            "After keys are released": "Sau khi nhấn phím",
+            "Dock shows window previews": "Dock hiển thị xem trước cửa sổ",
+            "Start at login": "Mở cùng hệ thống",
+            "Capture windows in the background": "Chụp cửa sổ trong nền",
+            "Language": "Ngôn ngữ",
+            "System Default": "Mặc định hệ thống",
+            "English": "Tiếng Anh",
+            "Vietnamese": "Tiếng Việt",
+            "Updates policy": "Chính sách cập nhật",
+            "Crash reports policy": "Chính sách báo cáo lỗi",
+            "Check for updates periodically": "Kiểm tra cập nhật định kỳ",
+            "Check manually only": "Chỉ kiểm tra thủ công",
+            "Ask whether to send crash reports": "Hỏi trước khi gửi báo cáo lỗi",
+            "Always send crash reports": "Luôn gửi báo cáo lỗi",
+            "Never send crash reports": "Không bao giờ gửi báo cáo lỗi",
+            "Show windows from applications": "Hiển thị cửa sổ theo ứng dụng",
+            "Show windows from screens": "Hiển thị cửa sổ theo màn hình",
+            "Show minimized windows": "Hiển thị cửa sổ đã thu nhỏ",
+            "Show hidden windows": "Hiển thị cửa sổ đã ẩn",
+            "Show fullscreen windows": "Hiển thị cửa sổ toàn màn hình",
+            "Order windows by": "Sắp xếp cửa sổ theo",
+            "All apps": "Tất cả ứng dụng",
+            "Active app": "Ứng dụng đang hoạt động",
+            "Non-active apps": "Ứng dụng không hoạt động",
+            "Current screen only": "Chỉ màn hình hiện tại",
+            "All screens": "Tất cả màn hình",
+            "Show": "Hiển thị",
+            "Hide": "Ẩn",
+            "Recently Focused First": "Ưu tiên vừa dùng gần đây",
+            "Recently Opened First": "Ưu tiên vừa mở gần đây",
+            "Name A-z": "Tên A-z",
+            "Name Z-a": "Tên Z-a",
+            "Focus selected window": "Tập trung cửa sổ đã chọn",
+            "Keep Open": "Giữ mở",
+            "Small": "Nhỏ",
+            "Medium": "Vừa",
+            "Large": "Lớn",
+            "Auto": "Tự động",
+            "Light": "Sáng",
+            "Dark": "Tối",
+            "System": "Hệ thống",
+        ]
+        return translations[text] ?? text
+    }
+
+    private func currentStartAtLoginEnabled() -> Bool {
+        if #available(macOS 13.0, *) {
+            return SMAppService.mainApp.status == .enabled
+        }
+        return AppSettings.shared.startAtLoginEnabled
+    }
+
+    private func applyStartAtLoginRegistration(enabled: Bool) -> Bool {
+        guard #available(macOS 13.0, *) else {
+            return false
+        }
+        do {
+            if enabled {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+            return true
+        } catch {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = "Unable to update Start at login."
+            alert.informativeText = error.localizedDescription
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+            return false
         }
     }
 

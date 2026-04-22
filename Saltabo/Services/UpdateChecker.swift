@@ -4,15 +4,68 @@ import Foundation
 final class UpdateChecker: NSObject {
     static let shared = UpdateChecker()
 
-    private override init() {}
+    private var periodicTimer: Timer?
+    private let defaults = UserDefaults.standard
+    private let lastAutomaticCheckDateKey = "Saltabo.lastAutomaticUpdateCheckDate"
+
+    private override init() {
+        super.init()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleUpdatePolicyChange),
+            name: .updateCheckPolicyDidChange,
+            object: nil
+        )
+    }
+
+    func startAutomaticChecksIfNeeded() {
+        DispatchQueue.main.async {
+            self.rescheduleAutomaticChecks()
+        }
+    }
 
     func checkForUpdates() {
+        checkForUpdates(interactive: true, markAutomaticRun: false)
+    }
+
+    @objc private func handleUpdatePolicyChange() {
+        DispatchQueue.main.async {
+            self.rescheduleAutomaticChecks()
+        }
+    }
+
+    private func rescheduleAutomaticChecks() {
+        periodicTimer?.invalidate()
+        periodicTimer = nil
+        guard AppSettings.shared.updateCheckPolicy == .periodically else { return }
+
+        runAutomaticCheckIfDue()
+
+        periodicTimer = Timer.scheduledTimer(withTimeInterval: 6 * 60 * 60, repeats: true) {
+            [weak self] _ in
+            self?.runAutomaticCheckIfDue()
+        }
+    }
+
+    private func runAutomaticCheckIfDue() {
+        let now = Date()
+        if let lastCheck = defaults.object(forKey: lastAutomaticCheckDateKey) as? Date,
+           now.timeIntervalSince(lastCheck) < 24 * 60 * 60
+        {
+            return
+        }
+        checkForUpdates(interactive: false, markAutomaticRun: true)
+    }
+
+    private func checkForUpdates(interactive: Bool, markAutomaticRun: Bool) {
         guard let feedURLString = Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") as? String,
               let feedURL = URL(string: feedURLString) else {
-            presentAlert(
-                title: "Update feed is not configured",
-                message: "Add SUFeedURL to Info.plist to enable update checks."
-            )
+            if interactive {
+                presentAlert(
+                    title: "Update feed is not configured",
+                    message: "Add SUFeedURL to Info.plist to enable update checks."
+                )
+            }
             return
         }
 
@@ -20,27 +73,37 @@ final class UpdateChecker: NSObject {
             guard let self else { return }
 
             if let error {
-                self.presentAlert(
-                    title: "Unable to check for updates",
-                    message: error.localizedDescription
-                )
+                if interactive {
+                    self.presentAlert(
+                        title: "Unable to check for updates",
+                        message: error.localizedDescription
+                    )
+                }
                 return
             }
 
             guard let data else {
-                self.presentAlert(
-                    title: "Unable to check for updates",
-                    message: "No response data was received from the update feed."
-                )
+                if interactive {
+                    self.presentAlert(
+                        title: "Unable to check for updates",
+                        message: "No response data was received from the update feed."
+                    )
+                }
                 return
             }
 
             guard let latestVersion = AppcastParser.parseLatestVersion(from: data) else {
-                self.presentAlert(
-                    title: "Unable to check for updates",
-                    message: "Could not parse version information from the update feed."
-                )
+                if interactive {
+                    self.presentAlert(
+                        title: "Unable to check for updates",
+                        message: "Could not parse version information from the update feed."
+                    )
+                }
                 return
+            }
+
+            if markAutomaticRun {
+                self.defaults.set(Date(), forKey: self.lastAutomaticCheckDateKey)
             }
 
             let currentVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString")
@@ -48,7 +111,7 @@ final class UpdateChecker: NSObject {
 
             if Self.isVersion(latestVersion, greaterThan: currentVersion) {
                 self.presentUpdateAvailableAlert(version: latestVersion)
-            } else {
+            } else if interactive {
                 self.presentAlert(
                     title: "You're up to date",
                     message: "Saltabo \(currentVersion) is the latest version."
