@@ -1986,23 +1986,51 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     private func makePermissionRow(
         title: String,
+        symbolName: String,
         statusField: BadgeStatusView,
         openAction: Selector
     ) -> NSView {
+        let card = NSView()
+        card.translatesAutoresizingMaskIntoConstraints = false
+        card.wantsLayer = true
+        card.layer?.cornerRadius = 8
+        card.layer?.borderWidth = 1
+        card.layer?.borderColor = NSColor.separatorColor.cgColor
+        card.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        card.widthAnchor.constraint(equalToConstant: 610).isActive = true
+        card.heightAnchor.constraint(equalToConstant: 48).isActive = true
+
+        let iconView = makeInlineSymbolView(symbolName)
+        iconView.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 13, weight: .semibold)
+        iconView.contentTintColor =
+            symbolName == "accessibility" ? NSColor.systemBlue : NSColor.systemRed
+
         let titleField = NSTextField(labelWithString: title)
+        titleField.translatesAutoresizingMaskIntoConstraints = false
         titleField.font = .systemFont(ofSize: 13, weight: .medium)
 
         let openButton = NSButton(title: "Open System Settings", target: self, action: openAction)
+        openButton.translatesAutoresizingMaskIntoConstraints = false
 
         let spacer = NSView()
+        spacer.translatesAutoresizingMaskIntoConstraints = false
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
-        let row = NSStackView(views: [titleField, spacer, statusField, openButton])
+        let row = NSStackView(views: [iconView, titleField, spacer, statusField, openButton])
+        row.translatesAutoresizingMaskIntoConstraints = false
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = 10
 
-        return row
+        card.addSubview(row)
+        NSLayoutConstraint.activate([
+            row.topAnchor.constraint(equalTo: card.topAnchor),
+            row.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 12),
+            row.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -12),
+            row.bottomAnchor.constraint(equalTo: card.bottomAnchor),
+        ])
+
+        return card
     }
 
     @objc private func shortcutChanged(_ sender: NSPopUpButton) {
@@ -2167,11 +2195,13 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let desiredRows: [NSView] = [
             makePermissionRow(
                 title: "Accessibility",
+                symbolName: "accessibility",
                 statusField: accessibilityStatusField,
                 openAction: #selector(openAccessibilitySettings)
             ),
             makePermissionRow(
                 title: "Screen Recording",
+                symbolName: "record.circle",
                 statusField: screenRecordingStatusField,
                 openAction: #selector(openScreenRecordingSettings)
             ),
