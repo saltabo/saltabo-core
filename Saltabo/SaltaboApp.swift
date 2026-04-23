@@ -40,6 +40,12 @@ final class SaltaboApp: NSObject, NSApplicationDelegate {
         appSwitcherManager.start()
         dockPreviewManager.start()
 
+        if !AppSettings.shared.menubarIconVisible {
+            DispatchQueue.main.async {
+                SettingsWindowController.shared.showSettings()
+            }
+        }
+
         if isSmokeTestMode {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                 self.appSwitcherManager.showSwitcherForCurrentSpace()
