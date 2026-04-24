@@ -89,6 +89,14 @@ final class MenuBarManager: NSObject {
         )
         menu.addItem(
             makeMenuItems(
+                title: "Request Feature...",
+                action: #selector(requestFeature),
+                keyEquivalent: "",
+                symbolName: "lightbulb",
+            )
+        )
+        menu.addItem(
+            makeMenuItems(
                 title: "Report Bug",
                 action: #selector(reportBug),
                 keyEquivalent: "",
@@ -197,6 +205,17 @@ final class MenuBarManager: NSObject {
 
     @objc private func sendFeedback() {
         FeedbackWindowController.shared.showWindow()
+    }
+
+    @objc private func requestFeature() {
+        guard
+            let url = URL(
+                string:
+                    "https://github.com/saltabo/saltabo/issues/new?template=feature_request.md")
+        else {
+            return
+        }
+        NSWorkspace.shared.open(url)
     }
 
     @objc private func reportBug() {
