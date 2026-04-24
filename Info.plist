@@ -15,7 +15,7 @@
 	<key>NSScreenCaptureUsageDescription</key>
 	<string>Saltabo needs screen recording permission to capture window thumbnails for the app switcher and dock preview.</string>
 	<key>SUFeedURL</key>
-	<string>https://saltabo.github.io/appcast.xml</string>
+	<string>https://saltabo.github.io/saltabo/appcast.xml</string>
 	<key>SUPublicEDKey</key>
     <string>7wJSBK55be7QJySkD195bQtrNUG/2ezPUlhe/xbn2Eo=</string>
 </dict>
