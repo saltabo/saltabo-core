@@ -47,6 +47,14 @@ final class MenuBarManager: NSObject {
         let menu = NSMenu()
         menu.addItem(
             makeMenuItems(
+                title: "About Saltabo...",
+                action: #selector(openAbout),
+                keyEquivalent: "",
+                symbolName: "info.circle",
+            )
+        )
+        menu.addItem(
+            makeMenuItems(
                 title: "Check for Updates...",
                 action: #selector(checkForUpdates),
                 keyEquivalent: "",
@@ -73,14 +81,6 @@ final class MenuBarManager: NSObject {
         menu.addItem(NSMenuItem.separator())
         menu.addItem(
             makeMenuItems(
-                title: "About Saltabo...",
-                action: #selector(openAbout),
-                keyEquivalent: "",
-                symbolName: "info.circle",
-            )
-        )
-        menu.addItem(
-            makeMenuItems(
                 title: "Send Feedback",
                 action: #selector(sendFeedback),
                 keyEquivalent: "",
@@ -90,7 +90,7 @@ final class MenuBarManager: NSObject {
         menu.addItem(
             makeMenuItems(
                 title: "Report Bug",
-                action: #selector(openAbout),
+                action: #selector(reportBug),
                 keyEquivalent: "",
                 symbolName: "exclamationmark.triangle",
             )
@@ -197,6 +197,10 @@ final class MenuBarManager: NSObject {
 
     @objc private func sendFeedback() {
         FeedbackWindowController.shared.showWindow()
+    }
+
+    @objc private func reportBug() {
+        BugReportWindowController.shared.showWindow()
     }
 
     @objc private func quit() {
@@ -505,6 +509,281 @@ private final class FeedbackWindowController: NSWindowController, NSWindowDelega
         alert.runModal()
     }
 
+}
+
+private final class BugReportWindowController: NSWindowController, NSWindowDelegate {
+    static let shared = BugReportWindowController()
+
+    private let adminEmail = "saltaboapp@pm.me"
+    private let statusLabel = NSTextField(labelWithString: "Diagnostic report generated.")
+    private let detailLabel = NSTextField(
+        labelWithString: "Do you want to review the contents\nbefore uploading it?"
+    )
+    private let reviewButton = NSButton(title: "Review", target: nil, action: nil)
+    private let uploadButton = NSButton(title: "Upload", target: nil, action: nil)
+    private var reportURL: URL?
+
+    private init() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 240, height: 280),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        super.init(window: window)
+
+        window.title = "Report a Bug"
+        window.center()
+        window.isReleasedWhenClosed = false
+        window.delegate = self
+        window.contentView = buildContentView()
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    func showWindow() {
+        regenerateReport()
+        NSApp.setActivationPolicy(.regular)
+        showWindow(nil)
+        window?.center()
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func buildContentView() -> NSView {
+        let root = NSView()
+        root.translatesAutoresizingMaskIntoConstraints = false
+
+        let iconView = NSImageView()
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        iconView.image = NSImage(
+            systemSymbolName: "questionmark.circle.fill",
+            accessibilityDescription: nil
+        )?.withSymbolConfiguration(.init(pointSize: 42, weight: .regular))
+        iconView.contentTintColor = NSColor(calibratedWhite: 0.2, alpha: 1)
+
+        statusLabel.translatesAutoresizingMaskIntoConstraints = false
+        statusLabel.alignment = .center
+        statusLabel.font = .systemFont(ofSize: 13, weight: .regular)
+        statusLabel.textColor = .labelColor
+
+        detailLabel.translatesAutoresizingMaskIntoConstraints = false
+        detailLabel.alignment = .center
+        detailLabel.font = .systemFont(ofSize: 13, weight: .regular)
+        detailLabel.textColor = .labelColor
+        detailLabel.lineBreakMode = .byWordWrapping
+        detailLabel.maximumNumberOfLines = 2
+
+        reviewButton.translatesAutoresizingMaskIntoConstraints = false
+        reviewButton.bezelStyle = .rounded
+        reviewButton.controlSize = .large
+        reviewButton.target = self
+        reviewButton.action = #selector(reviewReport)
+
+        uploadButton.translatesAutoresizingMaskIntoConstraints = false
+        uploadButton.bezelStyle = .rounded
+        uploadButton.controlSize = .large
+        uploadButton.bezelColor = .systemBlue
+        uploadButton.target = self
+        uploadButton.action = #selector(uploadReport)
+
+        root.addSubview(iconView)
+        root.addSubview(statusLabel)
+        root.addSubview(detailLabel)
+        root.addSubview(reviewButton)
+        root.addSubview(uploadButton)
+
+        NSLayoutConstraint.activate([
+            iconView.centerXAnchor.constraint(equalTo: root.centerXAnchor),
+            iconView.topAnchor.constraint(equalTo: root.topAnchor, constant: 58),
+            iconView.widthAnchor.constraint(equalToConstant: 42),
+            iconView.heightAnchor.constraint(equalToConstant: 42),
+
+            statusLabel.topAnchor.constraint(equalTo: iconView.bottomAnchor, constant: 20),
+            statusLabel.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 28),
+            statusLabel.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -28),
+
+            detailLabel.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 14),
+            detailLabel.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 26),
+            detailLabel.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -26),
+
+            reviewButton.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 22),
+            reviewButton.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -18),
+            reviewButton.widthAnchor.constraint(equalToConstant: 72),
+
+            uploadButton.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -22),
+            uploadButton.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -18),
+            uploadButton.widthAnchor.constraint(equalToConstant: 72),
+        ])
+
+        return root
+    }
+
+    private func regenerateReport() {
+        do {
+            let report = buildDiagnosticReport()
+            let tempDirectory = FileManager.default.temporaryDirectory
+                .appendingPathComponent("Saltabo", isDirectory: true)
+            try FileManager.default.createDirectory(
+                at: tempDirectory,
+                withIntermediateDirectories: true
+            )
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            let timestamp = formatter.string(from: Date()).replacingOccurrences(of: ":", with: "-")
+            let fileURL = tempDirectory.appendingPathComponent(
+                "saltabo-diagnostic-\(timestamp).txt"
+            )
+            try report.write(to: fileURL, atomically: true, encoding: .utf8)
+            reportURL = fileURL
+            uploadButton.isEnabled = true
+            reviewButton.isEnabled = true
+        } catch {
+            reportURL = nil
+            uploadButton.isEnabled = false
+            reviewButton.isEnabled = false
+            presentReportError(message: "Unable to generate diagnostic report.")
+        }
+    }
+
+    private func buildDiagnosticReport() -> String {
+        let settings = AppSettings.shared
+        let permissions = AccessibilityService.shared.currentPermissionSnapshot()
+        let shortVersion =
+            Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+            ?? "1.0.0"
+        let buildVersion =
+            Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
+        let bundleIdentifier = Bundle.main.bundleIdentifier ?? "unknown"
+        let timezone = TimeZone.current.identifier
+        let locale = Locale.current.identifier
+        let defaultsDump = diagnosticUserDefaultsDump()
+
+        return """
+            Saltabo Diagnostic Report
+            Generated: \(ISO8601DateFormatter().string(from: Date()))
+
+            App
+            - Version: \(shortVersion) (\(buildVersion))
+            - Bundle ID: \(bundleIdentifier)
+
+            System
+            - macOS: \(ProcessInfo.processInfo.operatingSystemVersionString)
+            - Locale: \(locale)
+            - Time Zone: \(timezone)
+
+            Permissions
+            - Accessibility: \(permissions.accessibilityGranted)
+            - Screen Recording: \(permissions.screenRecordingGranted)
+
+            Settings
+            - Shortcut: \(settings.switcherShortcut.rawValue)
+            - Trigger Key Code: \(settings.switcherTriggerKeyCode)
+            - Display Style: \(settings.switcherDisplayStyle.rawValue)
+            - Size Preset: \(settings.switcherSizePreset.rawValue)
+            - Theme Preset: \(settings.switcherThemePreset.rawValue)
+            - Release Action: \(settings.switcherReleaseAction.rawValue)
+            - Preview Selected Window: \(settings.switcherPreviewSelectedWindow)
+            - Application Scope: \(settings.switcherApplicationScope.rawValue)
+            - Screen Scope: \(settings.switcherScreenScope.rawValue)
+            - Minimized Windows: \(settings.switcherMinimizedWindowsVisibility.rawValue)
+            - Hidden Windows: \(settings.switcherHiddenWindowsVisibility.rawValue)
+            - Fullscreen Windows: \(settings.switcherFullscreenWindowsVisibility.rawValue)
+            - Order Preference: \(settings.switcherOrderPreference.rawValue)
+            - Start At Login: \(settings.startAtLoginEnabled)
+            - Menubar Icon Style: \(settings.menubarIconStyle.rawValue)
+            - Menubar Icon Visible: \(settings.menubarIconVisible)
+            - Capture Windows In Background: \(settings.captureWindowsInBackground)
+            - Language: \(settings.appLanguage.rawValue)
+            - Update Policy: \(settings.updateCheckPolicy.rawValue)
+            - Crash Reports Policy: \(settings.crashReportsPolicy.rawValue)
+
+            UserDefaults
+            \(defaultsDump)
+            """
+    }
+
+    private func diagnosticUserDefaultsDump() -> String {
+        guard let bundleIdentifier = Bundle.main.bundleIdentifier,
+            let defaults = UserDefaults.standard.persistentDomain(forName: bundleIdentifier)
+        else {
+            return "- No persistent domain found."
+        }
+
+        let relevantEntries =
+            defaults
+            .filter { $0.key.hasPrefix("Saltabo.") }
+            .sorted { $0.key < $1.key }
+
+        guard !relevantEntries.isEmpty else {
+            return "- No Saltabo-specific defaults found."
+        }
+
+        return
+            relevantEntries
+            .map { "- \($0.key): \($0.value)" }
+            .joined(separator: "\n")
+    }
+
+    @objc private func reviewReport() {
+        guard let reportURL else {
+            presentReportError(message: "Diagnostic report is not available.")
+            return
+        }
+        NSWorkspace.shared.open(reportURL)
+    }
+
+    @objc private func uploadReport() {
+        guard let reportURL else {
+            presentReportError(message: "Diagnostic report is not available.")
+            return
+        }
+
+        let reportContents: String
+        do {
+            reportContents = try String(contentsOf: reportURL, encoding: .utf8)
+        } catch {
+            presentReportError(message: "Unable to read the diagnostic report.")
+            return
+        }
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        let title = "Bug report: \(formatter.string(from: Date()))"
+        var components = URLComponents(
+            string: "https://github.com/saltabo/saltabo/issues/new"
+        )
+        components?.queryItems = [
+            URLQueryItem(name: "template", value: "bug_report.yml"),
+            URLQueryItem(name: "title", value: title),
+            URLQueryItem(name: "diag", value: reportContents),
+        ]
+
+        guard let issueURL = components?.url else {
+            presentReportError(message: "Unable to create the GitHub issue URL.")
+            return
+        }
+
+        guard NSWorkspace.shared.open(issueURL) else {
+            presentReportError(message: "Unable to open GitHub issue creation page.")
+            return
+        }
+
+        window?.orderOut(nil)
+        NSApp.setActivationPolicy(.accessory)
+    }
+
+    private func presentReportError(message: String) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = message
+        alert.addButton(withTitle: "OK")
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+    }
 }
 
 private final class VerticallyCenteredTextField: NSTextField {
