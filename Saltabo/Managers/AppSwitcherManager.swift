@@ -309,6 +309,11 @@ final class AppSwitcherManager {
             return Unmanaged.passRetained(event)
         }
 
+        // Never hijack keyboard input while the Settings window is active.
+        if SettingsWindowController.shared.window?.isKeyWindow == true {
+            return Unmanaged.passRetained(event)
+        }
+
         let shortcut = AppSettings.shared.switcherShortcut
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags

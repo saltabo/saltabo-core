@@ -72,6 +72,14 @@ final class MenuBarManager: NSObject {
         )
         menu.addItem(
             makeMenuItems(
+                title: "Manage License...",
+                action: #selector(openLicenseSettings),
+                keyEquivalent: "",
+                symbolName: "key.fill",
+            )
+        )
+        menu.addItem(
+            makeMenuItems(
                 title: "Check permissions...",
                 action: #selector(checkPermissions),
                 keyEquivalent: "",
@@ -177,6 +185,12 @@ final class MenuBarManager: NSObject {
     }
 
     @objc private func openSettings() {
+        DispatchQueue.main.async {
+            SettingsWindowController.shared.showSettings()
+        }
+    }
+
+    @objc private func openLicenseSettings() {
         DispatchQueue.main.async {
             SettingsWindowController.shared.showSettings()
         }
@@ -718,6 +732,8 @@ private final class BugReportWindowController: NSWindowController, NSWindowDeleg
             - Language: \(settings.appLanguage.rawValue)
             - Update Policy: \(settings.updateCheckPolicy.rawValue)
             - Crash Reports Policy: \(settings.crashReportsPolicy.rawValue)
+            - License Status: \(settings.licenseStatus.rawValue)
+            - License Activated At: \(settings.licenseActivatedAt?.description ?? "nil")
 
             UserDefaults
             \(defaultsDump)

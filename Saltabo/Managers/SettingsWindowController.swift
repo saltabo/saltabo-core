@@ -38,6 +38,33 @@ private final class BadgeStatusView: NSView {
     }
 }
 
+private final class EditingShortcutTextField: NSTextField {
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.command),
+            let characters = event.charactersIgnoringModifiers?.lowercased()
+        else {
+            return super.performKeyEquivalent(with: event)
+        }
+
+        switch characters {
+        case "a":
+            currentEditor()?.selectAll(nil)
+            return true
+        case "c":
+            currentEditor()?.copy(nil)
+            return true
+        case "v":
+            currentEditor()?.paste(nil)
+            return true
+        case "x":
+            currentEditor()?.cut(nil)
+            return true
+        default:
+            return super.performKeyEquivalent(with: event)
+        }
+    }
+}
+
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     static let shared = SettingsWindowController()
 
@@ -90,6 +117,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let appLanguagePopup = NSPopUpButton()
     private let updatesPolicyPopup = NSPopUpButton()
     private let crashReportsPolicyPopup = NSPopUpButton()
+    private let licenseKeyField = EditingShortcutTextField()
+    private let licenseStatusField = NSTextField(labelWithString: "")
+    private let licenseActionButton = NSButton(title: "Activate", target: nil, action: nil)
     private let switcherTriggerKeyButton = NSButton()
     private let switcherSizeControl = NSSegmentedControl()
     private let switcherThemeControl = NSSegmentedControl()
@@ -109,6 +139,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private weak var switcherStyleAppIconsTile: NSButton?
     private weak var switcherStyleListTile: NSButton?
     private var triggerKeyCaptureMonitor: Any?
+    private var isActivatingLicense = false
 
     private init() {
         let window = NSWindow(
@@ -243,6 +274,12 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             name: .appLanguageDidChange,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(syncLicenseUIState),
+            name: .licenseStatusDidChange,
+            object: nil
+        )
         NSWorkspace.shared.notificationCenter.addObserver(
             self,
             selector: #selector(handleWorkspaceAppDeactivation(_:)),
@@ -269,6 +306,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         syncAppLanguageSelection()
         syncUpdatesPolicySelection()
         syncCrashReportsPolicySelection()
+        syncLicenseUIState()
         refreshPermissionState()
     }
 
@@ -296,6 +334,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         syncAppLanguageSelection()
         syncUpdatesPolicySelection()
         syncCrashReportsPolicySelection()
+        syncLicenseUIState()
         refreshSwitcherStyleTileSelection()
         refreshPermissionState()
         NSApp.setActivationPolicy(.regular)
@@ -834,6 +873,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         container.addArrangedSubview(makeGeneralPrimaryCard())
         container.addArrangedSubview(makeGeneralLanguageCard())
         container.addArrangedSubview(makeGeneralPoliciesCard())
+        container.addArrangedSubview(makeGeneralLicenseCard())
 
         root.addSubview(container)
         NSLayoutConstraint.activate([
@@ -936,6 +976,108 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         ])
 
         return card
+    }
+
+    private func makeGeneralLicenseCard() -> NSView {
+        let card = makeSettingsGroupCard(width: 610)
+
+        let stack = NSStackView()
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.orientation = .vertical
+        stack.spacing = 0
+        stack.alignment = .leading
+
+        stack.addArrangedSubview(makeGeneralLicenseInputRow())
+        stack.addArrangedSubview(makeDivider())
+        stack.addArrangedSubview(makeGeneralLicenseStatusRow())
+
+        card.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.topAnchor.constraint(equalTo: card.topAnchor),
+            stack.leadingAnchor.constraint(equalTo: card.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: card.trailingAnchor),
+            stack.bottomAnchor.constraint(equalTo: card.bottomAnchor),
+        ])
+        return card
+    }
+
+    private func makeGeneralLicenseInputRow() -> NSView {
+        let row = NSView()
+        row.translatesAutoresizingMaskIntoConstraints = false
+
+        let titleLabel = NSTextField(labelWithString: "License key")
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.font = .systemFont(ofSize: 13, weight: .regular)
+        titleLabel.textColor = .labelColor
+
+        licenseKeyField.translatesAutoresizingMaskIntoConstraints = false
+        licenseKeyField.placeholderString = "STB-XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
+        licenseKeyField.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+        licenseKeyField.isBordered = true
+        licenseKeyField.bezelStyle = .roundedBezel
+        licenseKeyField.target = self
+        licenseKeyField.action = #selector(applyLicenseKey)
+
+        licenseActionButton.translatesAutoresizingMaskIntoConstraints = false
+        licenseActionButton.bezelStyle = .rounded
+        licenseActionButton.controlSize = .regular
+        licenseActionButton.target = self
+        licenseActionButton.action = #selector(handleLicenseAction)
+
+        row.addSubview(titleLabel)
+        row.addSubview(licenseKeyField)
+        row.addSubview(licenseActionButton)
+
+        NSLayoutConstraint.activate([
+            row.heightAnchor.constraint(equalToConstant: 56),
+            titleLabel.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 10),
+            titleLabel.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            licenseActionButton.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -10),
+            licenseActionButton.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            licenseActionButton.widthAnchor.constraint(equalToConstant: 98),
+            licenseKeyField.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            licenseKeyField.trailingAnchor.constraint(
+                equalTo: licenseActionButton.leadingAnchor,
+                constant: -20
+            ),
+            licenseKeyField.widthAnchor.constraint(equalToConstant: 360),
+            licenseKeyField.leadingAnchor.constraint(
+                greaterThanOrEqualTo: titleLabel.trailingAnchor,
+                constant: 16
+            ),
+        ])
+        return row
+    }
+
+    private func makeGeneralLicenseStatusRow() -> NSView {
+        let row = NSView()
+        row.translatesAutoresizingMaskIntoConstraints = false
+
+        let titleLabel = NSTextField(labelWithString: "License status")
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.font = .systemFont(ofSize: 13, weight: .regular)
+        titleLabel.textColor = .labelColor
+
+        licenseStatusField.translatesAutoresizingMaskIntoConstraints = false
+        licenseStatusField.font = .systemFont(ofSize: 12, weight: .medium)
+        licenseStatusField.alignment = .right
+        licenseStatusField.lineBreakMode = .byTruncatingTail
+
+        row.addSubview(titleLabel)
+        row.addSubview(licenseStatusField)
+
+        NSLayoutConstraint.activate([
+            row.heightAnchor.constraint(equalToConstant: 40),
+            titleLabel.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 10),
+            titleLabel.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            licenseStatusField.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -10),
+            licenseStatusField.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            licenseStatusField.leadingAnchor.constraint(
+                greaterThanOrEqualTo: titleLabel.trailingAnchor,
+                constant: 16
+            ),
+        ])
+        return row
     }
 
     private func sizedMenubarPopupItemImage(_ source: NSImage) -> NSImage {
@@ -1663,6 +1805,105 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         AppSettings.shared.crashReportsPolicy = policy
     }
 
+    @objc private func handleLicenseAction() {
+        guard !isActivatingLicense else { return }
+        if LicenseManager.shared.status == .active {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = "Deactivate this license?"
+            alert.informativeText = "You can enter a new key later to activate again."
+            alert.addButton(withTitle: "Deactivate")
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            LicenseManager.shared.deactivate()
+            syncLicenseUIState()
+            return
+        }
+        applyLicenseKey()
+    }
+
+    @objc private func applyLicenseKey() {
+        guard !isActivatingLicense else { return }
+        let userInput = licenseKeyField.stringValue
+        guard !userInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            presentLicenseAlert(
+                title: "License key is empty.",
+                text: "Please enter a key in the format STB-XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX."
+            )
+            return
+        }
+
+        isActivatingLicense = true
+        licenseActionButton.isEnabled = false
+        licenseActionButton.title = "Activating..."
+        licenseKeyField.isEnabled = false
+
+        LicenseManager.shared.activate(with: userInput) { [weak self] result in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.isActivatingLicense = false
+                self.licenseActionButton.isEnabled = true
+
+                switch result {
+                case .success:
+                    self.syncLicenseUIState()
+                case .failure(let error):
+                    self.syncLicenseUIState()
+                    self.presentLicenseAlert(
+                        title: "Activation failed.",
+                        text: error.errorDescription ?? "Unknown error."
+                    )
+                }
+            }
+        }
+    }
+
+    @objc private func syncLicenseUIState() {
+        let status = LicenseManager.shared.status
+        let activatedAt = AppSettings.shared.licenseActivatedAt
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+
+        if status == .active {
+            let activeText: String
+            if let activatedAt {
+                activeText = "Active since \(formatter.string(from: activatedAt))"
+            } else {
+                activeText = "Active"
+            }
+            licenseStatusField.stringValue = "\(activeText) (\(LicenseManager.shared.maskedLicenseKey))"
+            licenseStatusField.textColor = .systemGreen
+            licenseActionButton.title = "Deactivate"
+            licenseKeyField.stringValue = AppSettings.shared.licenseKey
+            licenseKeyField.isEnabled = false
+        } else {
+            switch AppAccessManager.shared.currentState() {
+            case .trial(let daysRemaining):
+                licenseStatusField.stringValue = "Trial Plan: \(daysRemaining) day(s) remaining"
+                licenseStatusField.textColor = .secondaryLabelColor
+            case .blocked:
+                licenseStatusField.stringValue = "Trial expired"
+                licenseStatusField.textColor = .systemRed
+            case .licensed:
+                licenseStatusField.stringValue = "Active"
+                licenseStatusField.textColor = .systemGreen
+            }
+            licenseActionButton.title = "Activate"
+            licenseKeyField.stringValue = AppSettings.shared.licenseKey
+            licenseKeyField.isEnabled = true
+        }
+    }
+
+    private func presentLicenseAlert(title: String, text: String) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = title
+        alert.informativeText = text
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
     @objc private func syncSwitcherThemeSelection() {
         let selectedSegment: Int
         switch AppSettings.shared.switcherThemePreset {
@@ -1833,6 +2074,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         syncAppLanguageSelection()
         syncUpdatesPolicySelection()
         syncCrashReportsPolicySelection()
+        syncLicenseUIState()
         refreshPermissionState()
     }
 
@@ -2050,6 +2292,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         triggerKeyCaptureMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) {
             [weak self] event in
             guard let self else { return event }
+            // Do not hijack common shortcuts like Cmd+V while capture mode is active.
+            let blockedModifiers: NSEvent.ModifierFlags = [.command, .control, .option]
+            if !event.modifierFlags.intersection(blockedModifiers).isEmpty {
+                return event
+            }
             let keyCode = event.keyCode
             if keyCode == 53 {
                 self.syncSwitcherTriggerKeyButtonTitle()

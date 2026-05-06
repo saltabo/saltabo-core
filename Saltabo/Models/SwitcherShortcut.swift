@@ -81,6 +81,11 @@ enum CrashReportsPolicy: String, CaseIterable {
     case never
 }
 
+enum LicenseStatus: String {
+    case inactive
+    case active
+}
+
 enum SwitcherShortcut: String, CaseIterable {
     case commandTab
     case optionTab
@@ -163,6 +168,7 @@ extension Notification.Name {
     static let appLanguageDidChange = Notification.Name("Saltabo.appLanguageDidChange")
     static let updateCheckPolicyDidChange = Notification.Name("Saltabo.updateCheckPolicyDidChange")
     static let crashReportsPolicyDidChange = Notification.Name("Saltabo.crashReportsPolicyDidChange")
+    static let licenseStatusDidChange = Notification.Name("Saltabo.licenseStatusDidChange")
     static let switcherAvailabilityDidChange = Notification.Name(
         "Saltabo.switcherAvailabilityDidChange")
 }
@@ -192,6 +198,10 @@ final class AppSettings {
         static let updateCheckPolicy = "Saltabo.updateCheckPolicy"
         static let crashReportsPolicy = "Saltabo.crashReportsPolicy"
         static let suppressMoveToApplicationsPrompt = "Saltabo.suppressMoveToApplicationsPrompt"
+        static let licenseKey = "Saltabo.licenseKey"
+        static let licenseStatus = "Saltabo.licenseStatus"
+        static let licenseActivatedAt = "Saltabo.licenseActivatedAt"
+        static let trialStartedAt = "Saltabo.trialStartedAt"
     }
 
     private let defaults = UserDefaults.standard
@@ -538,9 +548,243 @@ final class AppSettings {
         }
     }
 
+    var licenseKey: String {
+        get {
+            defaults.string(forKey: Keys.licenseKey) ?? ""
+        }
+        set {
+            defaults.set(newValue, forKey: Keys.licenseKey)
+        }
+    }
+
+    var licenseStatus: LicenseStatus {
+        get {
+            guard
+                let raw = defaults.string(forKey: Keys.licenseStatus),
+                let status = LicenseStatus(rawValue: raw)
+            else {
+                return .inactive
+            }
+            return status
+        }
+        set {
+            guard newValue != licenseStatus else { return }
+            defaults.set(newValue.rawValue, forKey: Keys.licenseStatus)
+            NotificationCenter.default.post(name: .licenseStatusDidChange, object: newValue)
+        }
+    }
+
+    var licenseActivatedAt: Date? {
+        get {
+            defaults.object(forKey: Keys.licenseActivatedAt) as? Date
+        }
+        set {
+            defaults.set(newValue, forKey: Keys.licenseActivatedAt)
+        }
+    }
+
+    var trialStartedAt: Date? {
+        get {
+            defaults.object(forKey: Keys.trialStartedAt) as? Date
+        }
+        set {
+            defaults.set(newValue, forKey: Keys.trialStartedAt)
+        }
+    }
+
     func resetAll() {
         guard let bundleID = Bundle.main.bundleIdentifier else { return }
         defaults.removePersistentDomain(forName: bundleID)
         defaults.synchronize()
+    }
+}
+
+final class LicenseManager {
+    static let shared = LicenseManager()
+
+    private init() {}
+    private let productName = "Saltabo"
+    private let licenseDeviceIdKey = "Saltabo.licenseDeviceId"
+
+    private var apiBaseURL: String {
+        let envValue = ProcessInfo.processInfo.environment["SALTABO_API_BASE_URL"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let envValue, !envValue.isEmpty {
+            return envValue
+        }
+        return "http://localhost:4000/api/v1"
+    }
+
+    enum ActivationError: LocalizedError {
+        case invalidFormat
+        case invalidURL
+        case requestFailed
+        case serverRejected(message: String)
+
+        var errorDescription: String? {
+            switch self {
+            case .invalidFormat:
+                return "Please enter a key in the format STB-XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX."
+            case .invalidURL:
+                return "License server URL is invalid."
+            case .requestFailed:
+                return "Cannot reach license server."
+            case .serverRejected(let message):
+                return message
+            }
+        }
+    }
+
+    var status: LicenseStatus {
+        AppSettings.shared.licenseStatus
+    }
+
+    var maskedLicenseKey: String {
+        let key = AppSettings.shared.licenseKey
+        guard key.count > 8 else { return key }
+        let start = key.prefix(4)
+        let end = key.suffix(4)
+        return "\(start)-****-****-\(end)"
+    }
+
+    func activate(with rawKey: String, completion: @escaping (Result<Void, ActivationError>) -> Void) {
+        let normalized = normalize(rawKey)
+        guard isValidFormat(normalized) else {
+            completion(.failure(.invalidFormat))
+            return
+        }
+        guard let url = URL(string: "\(apiBaseURL)/licenses/activate") else {
+            completion(.failure(.invalidURL))
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 15
+        let payload: [String: Any] = [
+            "product": productName,
+            "licenseKey": normalized,
+            "device": licenseDevicePayload(),
+        ]
+        request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+
+        URLSession.shared.dataTask(with: request) { _, response, error in
+            if error != nil {
+                completion(.failure(.requestFailed))
+                return
+            }
+
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard (200...299).contains(statusCode) else {
+                completion(
+                    .failure(
+                        .serverRejected(
+                            message: "License activation failed (HTTP \(statusCode))."
+                        )
+                    )
+                )
+                return
+            }
+
+            AppSettings.shared.licenseKey = normalized
+            AppSettings.shared.licenseStatus = .active
+            AppSettings.shared.licenseActivatedAt = Date()
+            completion(.success(()))
+        }.resume()
+    }
+
+    func deactivate() {
+        AppSettings.shared.licenseKey = ""
+        AppSettings.shared.licenseStatus = .inactive
+        AppSettings.shared.licenseActivatedAt = nil
+    }
+
+    private func normalize(_ key: String) -> String {
+        let cleaned = key
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+        return cleaned.components(separatedBy: .whitespacesAndNewlines).joined()
+    }
+
+    private func isValidFormat(_ key: String) -> Bool {
+        let pattern = "^STB-[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}$"
+        return key.range(of: pattern, options: .regularExpression) != nil
+    }
+
+    private func licenseDevicePayload() -> [String: String] {
+        [
+            "device_id": licenseDeviceId(),
+            "device_name": Host.current().localizedName ?? ProcessInfo.processInfo.hostName,
+            "platform": "macos",
+            "arch": architectureName,
+        ]
+    }
+
+    private func licenseDeviceId() -> String {
+        let defaults = UserDefaults.standard
+        if let existing = defaults.string(forKey: licenseDeviceIdKey), !existing.isEmpty {
+            return existing
+        }
+
+        let generated = UUID().uuidString
+        defaults.set(generated, forKey: licenseDeviceIdKey)
+        return generated
+    }
+
+    private var architectureName: String {
+        #if arch(arm64)
+            return "arm64"
+        #elseif arch(x86_64)
+            return "x86_64"
+        #else
+            return "unknown"
+        #endif
+    }
+}
+
+enum AppAccessState {
+    case licensed
+    case trial(daysRemaining: Int)
+    case blocked
+}
+
+final class AppAccessManager {
+    static let shared = AppAccessManager()
+
+    private let trialDays = 14
+    private let calendar = Calendar.current
+
+    private init() {}
+
+    func bootstrapTrialIfNeeded(now: Date = Date()) {
+        if AppSettings.shared.trialStartedAt == nil {
+            AppSettings.shared.trialStartedAt = now
+        }
+    }
+
+    func currentState(now: Date = Date()) -> AppAccessState {
+        if LicenseManager.shared.status == .active {
+            return .licensed
+        }
+
+        let startDate = AppSettings.shared.trialStartedAt ?? now
+        if AppSettings.shared.trialStartedAt == nil {
+            AppSettings.shared.trialStartedAt = startDate
+        }
+
+        let elapsedDays = calendar.dateComponents([.day], from: startDate, to: now).day ?? 0
+        let remaining = trialDays - elapsedDays
+        if remaining > 0 {
+            return .trial(daysRemaining: remaining)
+        }
+        return .blocked
+    }
+
+    var isBlocked: Bool {
+        if case .blocked = currentState() {
+            return true
+        }
+        return false
     }
 }
