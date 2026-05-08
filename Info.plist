@@ -14,6 +14,8 @@
 	<string>This app needs accessibility permission to switch windows</string>
 	<key>NSScreenCaptureUsageDescription</key>
 	<string>Saltabo needs screen recording permission to capture window thumbnails for the app switcher and dock preview.</string>
+	<key>SaltaboPurchaseURL</key>
+	<string>https://saltabo.xyz/pricing</string>
 	<key>SUFeedURL</key>
 	<string>https://saltabo.github.io/saltabo/appcast.xml</string>
 	<key>SUPublicEDKey</key>

@@ -618,7 +618,9 @@ final class LicenseManager {
     enum ActivationError: LocalizedError {
         case invalidFormat
         case invalidURL
-        case requestFailed
+        case encodeFailed
+        /// Network unreachable, DNS failure, ATS, timeout, etc. (underlying system message).
+        case networkFailure(details: String?)
         case serverRejected(message: String)
 
         var errorDescription: String? {
@@ -627,8 +629,14 @@ final class LicenseManager {
                 return "Please enter a key in the format STB-XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX."
             case .invalidURL:
                 return "License server URL is invalid."
-            case .requestFailed:
-                return "Cannot reach license server."
+            case .encodeFailed:
+                return "Could not prepare the activation request."
+            case .networkFailure(let details):
+                let base = "Cannot reach the license server."
+                if let details, !details.isEmpty {
+                    return "\(base)\n\n\(details)"
+                }
+                return "\(base) Check that the server is running and set SALTABO_API_BASE_URL if needed."
             case .serverRejected(let message):
                 return message
             }
@@ -667,30 +675,43 @@ final class LicenseManager {
             "licenseKey": normalized,
             "device": licenseDevicePayload(),
         ]
-        request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+        guard let body = try? JSONSerialization.data(withJSONObject: payload) else {
+            completion(.failure(.encodeFailed))
+            return
+        }
+        request.httpBody = body
 
         URLSession.shared.dataTask(with: request) { _, response, error in
-            if error != nil {
-                completion(.failure(.requestFailed))
-                return
-            }
-
-            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
-            guard (200...299).contains(statusCode) else {
-                completion(
-                    .failure(
-                        .serverRejected(
-                            message: "License activation failed (HTTP \(statusCode))."
+            // Always commit settings + completion on the main thread (UserDefaults, notifications, UI).
+            DispatchQueue.main.async {
+                if let error {
+                    completion(
+                        .failure(
+                            .networkFailure(
+                                details: (error as NSError).localizedDescription
+                            )
                         )
                     )
-                )
-                return
-            }
+                    return
+                }
 
-            AppSettings.shared.licenseKey = normalized
-            AppSettings.shared.licenseStatus = .active
-            AppSettings.shared.licenseActivatedAt = Date()
-            completion(.success(()))
+                let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+                guard (200...299).contains(statusCode) else {
+                    completion(
+                        .failure(
+                            .serverRejected(
+                                message: "License activation failed (HTTP \(statusCode))."
+                            )
+                        )
+                    )
+                    return
+                }
+
+                AppSettings.shared.licenseKey = normalized
+                AppSettings.shared.licenseStatus = .active
+                AppSettings.shared.licenseActivatedAt = Date()
+                completion(.success(()))
+            }
         }.resume()
     }
 

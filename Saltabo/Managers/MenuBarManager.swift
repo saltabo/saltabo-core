@@ -4,21 +4,30 @@ final class MenuBarManager: NSObject {
     static let shared = MenuBarManager()
 
     private var statusItem: NSStatusItem?
+    private var hasInstalledObservers = false
 
     func setup() {
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleMenubarIconStyleChange),
-            name: .menubarIconStyleDidChange,
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleMenubarIconVisibilityChange),
-            name: .menubarIconVisibilityDidChange,
-            object: nil
-        )
+        if !hasInstalledObservers {
+            hasInstalledObservers = true
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleMenubarIconStyleChange),
+                name: .menubarIconStyleDidChange,
+                object: nil
+            )
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(handleMenubarIconVisibilityChange),
+                name: .menubarIconVisibilityDidChange,
+                object: nil
+            )
+        }
         applyMenubarVisibility()
+    }
+
+    /// Removes the menu bar icon (used when trial expires and core features must stop).
+    func tearDownPresentation() {
+        removeStatusItem()
     }
 
     @objc private func handleMenubarIconStyleChange() {

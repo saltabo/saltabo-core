@@ -93,6 +93,12 @@ final class AppSwitcherManager {
         installEventTap()
     }
 
+    /// Stops capturing global keyboard events and dismisses any open switcher UI.
+    func stop() {
+        cancel()
+        teardownEventTap()
+    }
+
     @objc private func handleShortcutChange() {
         start()
     }
@@ -311,6 +317,14 @@ final class AppSwitcherManager {
 
         // Never hijack keyboard input while the Settings window is active.
         if SettingsWindowController.shared.window?.isKeyWindow == true {
+            return Unmanaged.passRetained(event)
+        }
+
+        // NSAlert / modal dialogs (trial & license entry). Otherwise Cmd+V may never reach the field.
+        if NSApp.modalWindow != nil {
+            return Unmanaged.passRetained(event)
+        }
+        if NSApp.keyWindow?.level == .modalPanel {
             return Unmanaged.passRetained(event)
         }
 

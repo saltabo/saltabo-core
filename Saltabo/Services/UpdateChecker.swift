@@ -24,6 +24,11 @@ final class UpdateChecker: NSObject {
         }
     }
 
+    func stopAutomaticChecks() {
+        periodicTimer?.invalidate()
+        periodicTimer = nil
+    }
+
     func checkForUpdates() {
         checkForUpdates(interactive: true, markAutomaticRun: false)
     }
