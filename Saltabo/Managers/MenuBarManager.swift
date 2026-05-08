@@ -209,7 +209,7 @@ final class MenuBarManager: NSObject {
         NSApp.activate(ignoringOtherApps: true)
         let shortVersion =
             Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-            ?? "1.0.0"
+            ?? "0"
         let buildVersion =
             Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
         NSApp.orderFrontStandardAboutPanel(options: [
@@ -470,7 +470,7 @@ private final class FeedbackWindowController: NSWindowController, NSWindowDelega
 
         let shortVersion =
             Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-            ?? "1.0.0"
+            ?? "0"
         let buildVersion =
             Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
         let email = emailField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -695,7 +695,7 @@ private final class BugReportWindowController: NSWindowController, NSWindowDeleg
         let permissions = AccessibilityService.shared.currentPermissionSnapshot()
         let shortVersion =
             Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-            ?? "1.0.0"
+            ?? "0"
         let buildVersion =
             Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
         let bundleIdentifier = Bundle.main.bundleIdentifier ?? "unknown"
