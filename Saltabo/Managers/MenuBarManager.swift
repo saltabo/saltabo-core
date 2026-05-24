@@ -255,7 +255,7 @@ private final class FeedbackWindowController: NSWindowController, NSWindowDelega
 {
     static let shared = FeedbackWindowController()
 
-    private let adminEmail = "saltaboapp@pm.me"
+    private let adminEmail = "admin@saltabo.xyz"
     private let messageTextView = NSTextView()
     private let messagePlaceholderLabel = NSTextField(
         labelWithString: "I think the app could be improved with..."
@@ -556,7 +556,7 @@ private final class FeedbackWindowController: NSWindowController, NSWindowDelega
 private final class BugReportWindowController: NSWindowController, NSWindowDelegate {
     static let shared = BugReportWindowController()
 
-    private let adminEmail = "saltaboapp@pm.me"
+    private let adminEmail = "admin@saltabo.xyz"
     private let statusLabel = NSTextField(labelWithString: "Diagnostic report generated.")
     private let detailLabel = NSTextField(
         labelWithString: "Do you want to review the contents\nbefore uploading it?"
