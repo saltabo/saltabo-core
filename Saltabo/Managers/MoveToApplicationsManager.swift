@@ -58,9 +58,13 @@ final class MoveToApplicationsManager {
     }
 
     private var isRunningFromApplicationsFolder: Bool {
-        let bundlePath = Bundle.main.bundleURL.resolvingSymlinksInPath().standardizedFileURL.path
-        return bundlePath.hasPrefix("/Applications/")
-            || bundlePath.hasPrefix(NSHomeDirectory() + "/Applications/")
+        let bundleURL = Bundle.main.bundleURL
+        let systemApplicationsURL = URL(fileURLWithPath: "/Applications", isDirectory: true)
+        let userApplicationsURL = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true)
+            .appendingPathComponent("Applications", isDirectory: true)
+
+        return bundleURL.isInDirectory(systemApplicationsURL)
+            || bundleURL.isInDirectory(userApplicationsURL)
     }
 
     private var isTranslocated: Bool {
@@ -146,5 +150,22 @@ final class MoveToApplicationsManager {
         }
         guard result == length else { return nil }
         return data
+    }
+}
+
+private extension URL {
+    func isInDirectory(_ directoryURL: URL) -> Bool {
+        let canonicalPath = normalizedDataVolumePath(
+            resolvingSymlinksInPath().standardizedFileURL.path)
+        let canonicalDirectoryPath = normalizedDataVolumePath(
+            directoryURL.resolvingSymlinksInPath().standardizedFileURL.path)
+        return canonicalPath == canonicalDirectoryPath
+            || canonicalPath.hasPrefix(canonicalDirectoryPath + "/")
+    }
+
+    private func normalizedDataVolumePath(_ path: String) -> String {
+        let dataVolumePrefix = "/System/Volumes/Data"
+        guard path.hasPrefix(dataVolumePrefix + "/") else { return path }
+        return String(path.dropFirst(dataVolumePrefix.count))
     }
 }
