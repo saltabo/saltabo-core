@@ -91,12 +91,19 @@ final class MoveToApplicationsManager {
         let destinationURL = preferredDestinationURL()
 
         if FileManager.default.fileExists(atPath: destinationURL.path) {
-            relaunch(at: destinationURL)
-            return
+            do {
+                try removeQuarantineRecursively(at: destinationURL)
+                relaunch(at: destinationURL)
+                return
+            } catch {
+                presentMoveError(error, destinationURL: destinationURL)
+                return
+            }
         }
 
         do {
             try FileManager.default.copyItem(at: currentBundleURL, to: destinationURL)
+            try removeQuarantineRecursively(at: destinationURL)
             relaunch(at: destinationURL)
         } catch {
             presentMoveError(error, destinationURL: destinationURL)
@@ -139,6 +146,21 @@ final class MoveToApplicationsManager {
         alert.runModal()
     }
 
+    private func removeQuarantineRecursively(at rootURL: URL) throws {
+        try removeExtendedAttribute(named: "com.apple.quarantine", at: rootURL)
+
+        guard let enumerator = FileManager.default.enumerator(
+            at: rootURL,
+            includingPropertiesForKeys: nil
+        ) else {
+            return
+        }
+
+        for case let itemURL as URL in enumerator {
+            try removeExtendedAttribute(named: "com.apple.quarantine", at: itemURL)
+        }
+    }
+
     private func extendedAttribute(named name: String, at url: URL) -> Data? {
         let path = url.path
         let length = getxattr(path, name, nil, 0, 0, 0)
@@ -150,6 +172,20 @@ final class MoveToApplicationsManager {
         }
         guard result == length else { return nil }
         return data
+    }
+
+    private func removeExtendedAttribute(named name: String, at url: URL) throws {
+        let path = url.path
+        errno = 0
+        let result = removexattr(path, name, 0)
+        guard result == 0 || errno == ENOATTR else {
+            let description = String(cString: strerror(errno))
+            throw NSError(
+                domain: NSPOSIXErrorDomain,
+                code: Int(errno),
+                userInfo: [NSLocalizedDescriptionKey: description]
+            )
+        }
     }
 }
 
