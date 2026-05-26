@@ -59,6 +59,11 @@ GITHUB_REPO="${GITHUB_REPO:?Set GITHUB_REPO}"
 RELEASE_TAG="${RELEASE_TAG:?Set RELEASE_TAG (e.g. v1.0.1)}"
 
 PREFIX="https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/download/${RELEASE_TAG}/"
+if [[ "${GITHUB_REPO}" == "${GITHUB_OWNER}.github.io" ]]; then
+  FEED_URL="https://${GITHUB_OWNER}.github.io/${OUT}"
+else
+  FEED_URL="https://${GITHUB_OWNER}.github.io/${GITHUB_REPO}/${OUT}"
+fi
 STAGE=$(mktemp -d)
 trap 'rm -rf "${STAGE}"' EXIT
 
@@ -76,4 +81,4 @@ fi
 echo "Wrote ${OUT}"
 echo "Enclosure URLs use prefix: ${PREFIX}"
 echo "Host this file on GitHub Pages and set SUFeedURL to:"
-echo "  https://${GITHUB_OWNER}.github.io/${GITHUB_REPO}/appcast.xml"
+echo "  ${FEED_URL}"

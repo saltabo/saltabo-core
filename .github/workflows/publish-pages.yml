@@ -220,7 +220,7 @@ jobs:
           chmod +x ./scripts/generate-appcast.sh
           ./scripts/generate-appcast.sh "${PRODUCT_NAME}.zip" -o appcast.xml
 
-      - name: Push appcast to Pages repository
+      - name: Merge and push appcast to Pages repository
         env:
           TOKEN: ${{ secrets.PAGES_DEPLOY_TOKEN }}
           PAGES_REPOSITORY: ${{ env.PAGES_REPOSITORY }}
@@ -232,7 +232,14 @@ jobs:
           git config --global user.name "github-actions[bot]"
 
           git clone --depth 1 "https://x-access-token:${TOKEN}@github.com/${PAGES_REPOSITORY}.git" pages-repo
-          cp -f appcast.xml pages-repo/appcast.xml
+          if [ -f pages-repo/appcast.xml ]; then
+            python3 ./scripts/merge-appcast.py \
+              --new appcast.xml \
+              --existing pages-repo/appcast.xml \
+              --output pages-repo/appcast.xml
+          else
+            cp -f appcast.xml pages-repo/appcast.xml
+          fi
           cd pages-repo
           git add appcast.xml
           if git diff --staged --quiet; then
